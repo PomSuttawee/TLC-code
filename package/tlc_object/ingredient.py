@@ -84,7 +84,7 @@ class VerticalLane:
         RF values: {self.raw_rf_values}
         """
 
-class IngredientColor:
+class IngredientSingleColor:
     """
     Processes a single color channel of an ingredient image.
 
@@ -100,7 +100,7 @@ class IngredientColor:
     """
     def __init__(self, name: str, single_color_image: np.ndarray, concentration: List[float]):
         """
-        Initializes the IngredientColor class by segmenting the image and extracting lanes.
+        Initializes the IngredientSingleColor class by segmenting the image and extracting lanes.
 
         Args:
             name (str): Unique identifier for the color channel.
@@ -147,6 +147,33 @@ class IngredientColor:
         Number of horizontal lanes: {len(self.horizontal_lanes)}
         """
 
+    def get_rf(self) -> List[List[float]]:
+        """
+        Returns the RF values for each vertical lane in the color channel.
+
+        Returns:
+            List[List[float]]: List of RF value arrays for each vertical lane.
+        """
+        return [lane.rf for lane in self.vertical_lanes]
+    
+    def get_best_fit_line(self) -> List[List[float]]:
+        """
+        Returns the best-fit line coefficients for each horizontal lane in the color channel.
+
+        Returns:
+            List[List[float]]: List of best-fit line coefficient arrays for each horizontal lane.
+        """
+        return [lane.best_fit_line for lane in self.horizontal_lanes]
+    
+    def get_r2(self) -> List[float]:
+        """
+        Returns the R² scores for each horizontal lane in the color channel.
+
+        Returns:
+            List[float]: List of R² scores for each horizontal lane.
+        """
+        return [lane.r2 for lane in self.horizontal_lanes]
+
 class Ingredient:
     """
     Stores and processes an ingredient's image in multiple color channels.
@@ -157,9 +184,9 @@ class Ingredient:
         concentration (List[float]): List of concentration values for calibration.
         cropped_image (np.ndarray): Image cropped to its largest contour.
         line_detected_image (np.ndarray): Image with detected lines used for channel separation.
-        red_channel_ingredient (IngredientColor): IngredientColor for the red channel.
-        green_channel_ingredient (IngredientColor): IngredientColor for the green channel.
-        blue_channel_ingredient (IngredientColor): IngredientColor for the blue channel.
+        red_channel_ingredient (IngredientSingleColor): IngredientSingleColor for the red channel.
+        green_channel_ingredient (IngredientSingleColor): IngredientSingleColor for the green channel.
+        blue_channel_ingredient (IngredientSingleColor): IngredientSingleColor for the blue channel.
     """
     def __init__(self, name: str, image: np.ndarray, concentration: List[float]):
         """
@@ -189,14 +216,14 @@ class Ingredient:
             if self.line_detected_image is None:
                 raise ValueError("Line detection failed, resulting in None")
             
-            log.debug(f'Initiate IngredientColor: Red channel')
-            self.red_channel_ingredient = IngredientColor(self.name, self.line_detected_image[:, :, 0], self.concentration)
+            log.debug(f'Initiate IngredientSingleColor: Red channel')
+            self.red_channel_ingredient = IngredientSingleColor(self.name, self.line_detected_image[:, :, 0], self.concentration)
             
-            log.debug(f'Initiate IngredientColor: Green channel')
-            self.green_channel_ingredient = IngredientColor(self.name, self.line_detected_image[:, :, 1], self.concentration)
+            log.debug(f'Initiate IngredientSingleColor: Green channel')
+            self.green_channel_ingredient = IngredientSingleColor(self.name, self.line_detected_image[:, :, 1], self.concentration)
             
-            log.debug(f'Initiate IngredientColor: Blue channel')
-            self.blue_channel_ingredient = IngredientColor(self.name, self.line_detected_image[:, :, 2], self.concentration)
+            log.debug(f'Initiate IngredientSingleColor: Blue channel')
+            self.blue_channel_ingredient = IngredientSingleColor(self.name, self.line_detected_image[:, :, 2], self.concentration)
             
             log.info(f'Completely initiate Ingredient[{name}]')
         except Exception as e:
@@ -215,7 +242,7 @@ class Ingredient:
         Blue channel processed image shape: {self.blue_channel_ingredient.segmented_image.shape}
         """
     
-    def get_channel_image(self, color_channel: str):
+    def get_channel_image(self, color_channel: str) -> np.ndarray:
         """
         Returns the single-channel image for the specified color channel.
 
@@ -237,7 +264,7 @@ class Ingredient:
         else:
             raise ValueError(f"Invalid color channel: {color_channel}")
     
-    def get_segmented_image(self, color_channel: str):
+    def get_segmented_image(self, color_channel: str) -> np.ndarray:
         """
         Returns the segmented image for the specified color channel.
 
@@ -259,7 +286,7 @@ class Ingredient:
         else:
             raise ValueError(f"Invalid color channel: {color_channel}")
     
-    def get_vertical_lane_images(self, color_channel: str):
+    def get_vertical_lane_images(self, color_channel: str) -> List[np.ndarray]:
         """
         Returns the list of vertical lane images for the specified color channel.
 
@@ -281,7 +308,7 @@ class Ingredient:
         else:
             raise ValueError(f"Invalid color channel: {color_channel}")
     
-    def get_horizontal_lane_images(self, color_channel: str):
+    def get_horizontal_lane_images(self, color_channel: str) -> List[np.ndarray]:
         """
         Returns the list of horizontal lane images for the specified color channel.
 
@@ -303,7 +330,7 @@ class Ingredient:
         else:
             raise ValueError(f"Invalid color channel: {color_channel}")
         
-    def get_rf(self, color_channel: str):
+    def get_rf(self, color_channel: str) -> List[List[float]]:
         """
         Returns the list of RF values for each vertical lane in the specified color channel.
 
@@ -316,14 +343,14 @@ class Ingredient:
         Raises:
             ValueError: If the given color channel is not valid.
         """
-        if color_channel == 'red':
-            return [lane.rf for lane in self.red_channel_ingredient.vertical_lanes]
-        elif color_channel == 'green':
-            return [lane.rf for lane in self.green_channel_ingredient.vertical_lanes]
-        elif color_channel == 'blue':
-            return [lane.rf for lane in self.blue_channel_ingredient.vertical_lanes]
-        else:
+        channel_map = {
+            'red': self.red_channel_ingredient,
+            'green': self.green_channel_ingredient,
+            'blue': self.blue_channel_ingredient
+        }
+        if color_channel not in channel_map:
             raise ValueError(f"Invalid color channel: {color_channel}")
+        return channel_map[color_channel].get_rf()
         
     def get_best_fit_line(self, color_channel: str):
         """
@@ -339,16 +366,16 @@ class Ingredient:
         Raises:
             ValueError: If the given color channel is not valid.
         """
-        if color_channel == 'red':
-            return [lane.best_fit_line for lane in self.red_channel_ingredient.horizontal_lanes]
-        elif color_channel == 'green':
-            return [lane.best_fit_line for lane in self.green_channel_ingredient.horizontal_lanes]
-        elif color_channel == 'blue':
-            return [lane.best_fit_line for lane in self.blue_channel_ingredient.horizontal_lanes]
-        else:
+        channel_map = {
+            'red': self.red_channel_ingredient,
+            'green': self.green_channel_ingredient,
+            'blue': self.blue_channel_ingredient
+        }
+        if color_channel not in channel_map:
             raise ValueError(f"Invalid color channel: {color_channel}")
+        return channel_map[color_channel].get_best_fit_line()
         
-    def get_r2(self, color_channel: str):
+    def get_r2(self, color_channel: str) -> List[float]:
         """
         Returns the list of R² scores for each horizontal lane in the specified color channel.
 
@@ -361,11 +388,11 @@ class Ingredient:
         Raises:
             ValueError: If the given color channel is not valid.
         """
-        if color_channel == 'red':
-            return [lane.r2 for lane in self.red_channel_ingredient.horizontal_lanes]
-        elif color_channel == 'green':
-            return [lane.r2 for lane in self.green_channel_ingredient.horizontal_lanes]
-        elif color_channel == 'blue':
-            return [lane.r2 for lane in self.blue_channel_ingredient.horizontal_lanes]
-        else:
+        channel_map = {
+            'red': self.red_channel_ingredient,
+            'green': self.green_channel_ingredient,
+            'blue': self.blue_channel_ingredient
+        }
+        if color_channel not in channel_map:
             raise ValueError(f"Invalid color channel: {color_channel}")
+        return channel_map[color_channel].get_r2()
