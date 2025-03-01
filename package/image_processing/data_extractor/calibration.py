@@ -52,7 +52,7 @@ def _calculate_peak_area(intensity: np.ndarray, minima: np.ndarray) -> np.ndarra
         peak_area.append(np.trapz(intensity[minima[index_minima]: minima[index_minima + 1] + 1]))
     return np.array(peak_area)
 
-def _calculate_best_fit_line(concentration: list[float], peak_area: np.ndarray) -> tuple[np.ndarray, float]:
+def _perform_linear_fit(concentration: list[float], peak_area: np.ndarray) -> tuple[np.ndarray, float]:
     """
     Perform a linear polynomial fit between the provided concentrations and peak areas.
     Returns the polynomial coefficients and the R^2 value.
@@ -74,7 +74,7 @@ def _calculate_best_fit_line(concentration: list[float], peak_area: np.ndarray) 
     # Return reversed to match [slope, intercept] if needed
     return coefs[::-1], round(float(r2), 3)
 
-def calculate_best_fit_line(image: np.ndarray, concentration: list[float]) -> tuple[np.ndarray, float]:
+def calculate_best_fit_line_for_image(image: np.ndarray, concentration: list[float]) -> tuple[np.ndarray, float]:
     """
     Calculate the best fit line for a given TLC image and concentration values.
     Raises a ValueError if the image is empty or if there's a mismatch between concentrations and obtained peak areas.
@@ -89,5 +89,5 @@ def calculate_best_fit_line(image: np.ndarray, concentration: list[float]) -> tu
     if len(minima) % 2 != 0:
         minima = minima[:-1]
     peak_area = _calculate_peak_area(intensity, minima)
-    best_fit_line, r2 = _calculate_best_fit_line(concentration, peak_area)
+    best_fit_line, r2 = _perform_linear_fit(concentration, peak_area)
     return best_fit_line, r2
