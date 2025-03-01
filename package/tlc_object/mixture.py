@@ -1,9 +1,9 @@
 import logging
-from typing import Dict, List
 import numpy as np
-from package.image_processing.general import io, crop
+from package.image_processing.general import crop
 from package.image_processing.segmentation import threshold
-from package.image_processing.data_extractor import rf
+from package.image_processing.data_extractor import peak_area, rf
+from package.image_processing.data_extractor.prak_area import calculate_peak_area_from_image
 
 class MixtureSingleColor:
     """
@@ -27,37 +27,15 @@ class MixtureSingleColor:
             log.debug(f'Segmenting image')
             self.segmented_image = threshold.segment_mixture(self.channel_image)
             log.debug(f'Calculating Rf values')
-            self.rf = rf.calculate_rf(self.segmented_image)
+            
+            self.rf = rf.calculate_rf_detect_centroid(self.segmented_image)
+            self.peak_area = calculate_peak_area_from_image(self.segmented_image)
         except Exception as e:
             log.error(f'Error initializing MixtureSingleColor: {e}')
             raise
     
-    def get_channel_image(self) -> np.ndarray:
-        """
-        Returns the image array of the color channel.
-
-        Returns:
-            np.ndarray: Image array of the color channel.
-        """
-        return self.channel_image
-    
-    def get_segmented_image(self) -> np.ndarray:
-        """
-        Returns the segmented image of the color channel.
-
-        Returns:
-            np.ndarray: Segmented image of the color channel.
-        """
-        return self.segmented_image
-    
-    def get_rf(self) -> List[float]:
-        """
-        Returns the Rf values for the color channel.
-
-        Returns:
-            List[float]: Calculated Rf values for the color channel.
-        """
-        return self.rf
+    def get_image_with_centroids(self):
+        return rf.get_image_with_centroids(self.segmented_image)
 
 class Mixture:
     """
@@ -85,16 +63,16 @@ class Mixture:
         self.name = name
         self.original_image = image
         try:
-            self.detected_line_image = crop.detect_and_crop_houghlines(image)
+            self.line_detected_image = crop.detect_and_crop_houghlines(image)
             
             self.log.debug(f'Initiate MixtureSingleColor: Red channel ')
-            self.red_channel_mixture = MixtureSingleColor(self.detected_line_image[:, :, 0])
+            self.red_channel_mixture = MixtureSingleColor(self.line_detected_image[:, :, 0])
             
             self.log.debug(f'Initiate MixtureSingleColor: Green channel')
-            self.green_channel_mixture = MixtureSingleColor(self.detected_line_image[:, :, 1])
+            self.green_channel_mixture = MixtureSingleColor(self.line_detected_image[:, :, 1])
             
             self.log.debug(f'Initiate MixtureSingleColor: Blue channel')
-            self.blue_channel_mixture = MixtureSingleColor(self.detected_line_image[:, :, 2])
+            self.blue_channel_mixture = MixtureSingleColor(self.line_detected_image[:, :, 2])
             
             self.log.info(f'Completely initiate Mixture[{name}]')
         except Exception as e:
@@ -103,60 +81,3 @@ class Mixture:
     
     def __str__(self):
         return f'Mixture[{self.name}]'
-    
-    def get_channel_image(self, color_channel: str) -> np.ndarray:
-        """
-        Returns the channel image for a given color.
-
-        Args:
-            color_channel (str): Color channel to retrieve.
-
-        Returns:
-            np.ndarray: Image array of the color channel.
-        """
-        channel_map = {
-            'red': self.red_channel_mixture,
-            'green': self.green_channel_mixture,
-            'blue': self.blue_channel_mixture
-        }
-        if color_channel not in channel_map:
-            raise ValueError(f"Invalid color channel: {color_channel}")
-        return channel_map[color_channel].get_channel_image()
-    
-    def get_segmented_image(self, color_channel: str) -> np.ndarray:
-        """
-        Returns the segmented image for a given color.
-
-        Args:
-            color_channel (str): Color channel to retrieve.
-
-        Returns:
-            np.ndarray: Segmented image of the color channel.
-        """
-        channel_map = {
-            'red': self.red_channel_mixture,
-            'green': self.green_channel_mixture,
-            'blue': self.blue_channel_mixture
-        }
-        if color_channel not in channel_map:
-            raise ValueError(f"Invalid color channel: {color_channel}")
-        return channel_map[color_channel].get_segmented_image()
-    
-    def get_rf(self, color_channel: str) -> List[float]:
-        """
-        Returns the Rf values for a given color.
-
-        Args:
-            color_channel (str): Color channel to retrieve.
-
-        Returns:
-            List[float]: Calculated Rf values for the color channel.
-        """
-        channel_map = {
-            'red': self.red_channel_mixture,
-            'green': self.green_channel_mixture,
-            'blue': self.blue_channel_mixture
-        }
-        if color_channel not in channel_map:
-            raise ValueError(f"Invalid color channel: {color_channel}")
-        return channel_map[color_channel].get_rf()
