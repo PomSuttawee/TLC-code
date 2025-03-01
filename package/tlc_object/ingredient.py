@@ -39,7 +39,7 @@ class HorizontalLane:
         validate_concentration(concentration)
         self.lane_name = lane_name
         self.lane_image = lane_image
-        self.best_fit_line, self.r2 = calibration.calculate_best_fit_line(lane_image, concentration)
+        self.best_fit_line, self.r2 = calibration.calculate_best_fit_line_for_image(lane_image, concentration)
 
     def __str__(self) -> str:
         """
@@ -72,7 +72,8 @@ class VerticalLane:
         validate_image(lane_image, "lane_image")
         self.lane_name = lane_name
         self.lane_image = lane_image
-        self.rf = rf.calculate_rf(lane_image)
+        self.rf = rf.calculate_rf_detect_centroid(lane_image)
+        self.lane_image_with_centroids = rf.get_image_with_centroids(lane_image)
     
     def __str__(self) -> str:
         """
@@ -81,7 +82,7 @@ class VerticalLane:
         return f"""
         Lane name: {self.lane_name}
         Lane image shape: {self.lane_image.shape}
-        RF values: {self.raw_rf_values}
+        RF values: {self.rf}
         """
 
 class IngredientSingleColor:
@@ -174,6 +175,16 @@ class IngredientSingleColor:
         """
         return [lane.r2 for lane in self.horizontal_lanes]
 
+    def get_vertical_lane_images_with_centroid(self) -> List[np.ndarray]:
+        """
+        Returns the list of vertical lane images with RF values annotated.
+
+        Returns:
+            List[np.ndarray]: List of vertical lane image arrays with RF values annotated.
+        """
+        images = [lane.lane_image_with_centroids for lane in self.vertical_lanes]
+        return images
+
 class Ingredient:
     """
     Stores and processes an ingredient's image in multiple color channels.
@@ -241,158 +252,3 @@ class Ingredient:
         Green channel processed image shape: {self.green_channel_ingredient.segmented_image.shape}
         Blue channel processed image shape: {self.blue_channel_ingredient.segmented_image.shape}
         """
-    
-    def get_channel_image(self, color_channel: str) -> np.ndarray:
-        """
-        Returns the single-channel image for the specified color channel.
-
-        Args:
-            color_channel (str): The color channel to retrieve ('red', 'green', or 'blue').
-
-        Returns:
-            np.ndarray: Single color channel image data.
-
-        Raises:
-            ValueError: If the given color channel is not valid.
-        """
-        if color_channel == 'red':
-            return self.red_channel_ingredient.single_color_image
-        elif color_channel == 'green':
-            return self.green_channel_ingredient.single_color_image
-        elif color_channel == 'blue':
-            return self.blue_channel_ingredient.single_color_image
-        else:
-            raise ValueError(f"Invalid color channel: {color_channel}")
-    
-    def get_segmented_image(self, color_channel: str) -> np.ndarray:
-        """
-        Returns the segmented image for the specified color channel.
-
-        Args:
-            color_channel (str): The color channel to retrieve ('red', 'green', or 'blue').
-
-        Returns:
-            np.ndarray: Segmented binary or refined mask of the lane structures.
-
-        Raises:
-            ValueError: If the given color channel is not valid.
-        """
-        if color_channel == 'red':
-            return self.red_channel_ingredient.segmented_image
-        elif color_channel == 'green':
-            return self.green_channel_ingredient.segmented_image
-        elif color_channel == 'blue':
-            return self.blue_channel_ingredient.segmented_image
-        else:
-            raise ValueError(f"Invalid color channel: {color_channel}")
-    
-    def get_vertical_lane_images(self, color_channel: str) -> List[np.ndarray]:
-        """
-        Returns the list of vertical lane images for the specified color channel.
-
-        Args:
-            color_channel (str): The color channel to retrieve ('red', 'green', or 'blue').
-
-        Returns:
-            List[np.ndarray]: List of vertical lane image arrays.
-
-        Raises:
-            ValueError: If the given color channel is not valid.
-        """
-        if color_channel == 'red':
-            return self.red_channel_ingredient.vertical_lane_images
-        elif color_channel == 'green':
-            return self.green_channel_ingredient.vertical_lane_images
-        elif color_channel == 'blue':
-            return self.blue_channel_ingredient.vertical_lane_images
-        else:
-            raise ValueError(f"Invalid color channel: {color_channel}")
-    
-    def get_horizontal_lane_images(self, color_channel: str) -> List[np.ndarray]:
-        """
-        Returns the list of horizontal lane images for the specified color channel.
-
-        Args:
-            color_channel (str): The color channel to retrieve ('red', 'green', or 'blue').
-
-        Returns:
-            List[np.ndarray]: List of horizontal lane image arrays.
-
-        Raises:
-            ValueError: If the given color channel is not valid.
-        """
-        if color_channel == 'red':
-            return self.red_channel_ingredient.horizontal_lane_images
-        elif color_channel == 'green':
-            return self.green_channel_ingredient.horizontal_lane_images
-        elif color_channel == 'blue':
-            return self.blue_channel_ingredient.horizontal_lane_images
-        else:
-            raise ValueError(f"Invalid color channel: {color_channel}")
-        
-    def get_rf(self, color_channel: str) -> List[List[float]]:
-        """
-        Returns the list of RF values for each vertical lane in the specified color channel.
-
-        Args:
-            color_channel (str): The color channel to retrieve ('red', 'green', or 'blue').
-
-        Returns:
-            List[List[float]]: List of RF value arrays for each vertical lane.
-
-        Raises:
-            ValueError: If the given color channel is not valid.
-        """
-        channel_map = {
-            'red': self.red_channel_ingredient,
-            'green': self.green_channel_ingredient,
-            'blue': self.blue_channel_ingredient
-        }
-        if color_channel not in channel_map:
-            raise ValueError(f"Invalid color channel: {color_channel}")
-        return channel_map[color_channel].get_rf()
-        
-    def get_best_fit_line(self, color_channel: str):
-        """
-        Returns the list of best-fit line coefficients for each horizontal lane 
-        in the specified color channel.
-
-        Args:
-            color_channel (str): The color channel to retrieve ('red', 'green', or 'blue').
-
-        Returns:
-            List[List[float]]: List of best-fit line coefficient arrays for each horizontal lane.
-
-        Raises:
-            ValueError: If the given color channel is not valid.
-        """
-        channel_map = {
-            'red': self.red_channel_ingredient,
-            'green': self.green_channel_ingredient,
-            'blue': self.blue_channel_ingredient
-        }
-        if color_channel not in channel_map:
-            raise ValueError(f"Invalid color channel: {color_channel}")
-        return channel_map[color_channel].get_best_fit_line()
-        
-    def get_r2(self, color_channel: str) -> List[float]:
-        """
-        Returns the list of R² scores for each horizontal lane in the specified color channel.
-
-        Args:
-            color_channel (str): The color channel to retrieve ('red', 'green', or 'blue').
-
-        Returns:
-            List[float]: List of R² scores for each horizontal lane.
-
-        Raises:
-            ValueError: If the given color channel is not valid.
-        """
-        channel_map = {
-            'red': self.red_channel_ingredient,
-            'green': self.green_channel_ingredient,
-            'blue': self.blue_channel_ingredient
-        }
-        if color_channel not in channel_map:
-            raise ValueError(f"Invalid color channel: {color_channel}")
-        return channel_map[color_channel].get_r2()
