@@ -110,7 +110,6 @@ class Substance:
         self.slope = horizontal_lane.best_fit_line[0]
         self.intercept = horizontal_lane.best_fit_line[1]
         self.rf = vertical_lane.rf[substance_index]
-        self.mixture_group = None
 
 class IngredientSingleColor:
     """
@@ -153,11 +152,11 @@ class IngredientSingleColor:
             self._process_vertical_lanes()
             self._process_horizontal_lanes()
             self._process_substances()
-            
+                       
         except Exception as e:
             log.error(f"Failed to process color channel {name}: {str(e)}")
             raise ValueError(f"Color channel processing failed: {str(e)}") from e
-
+        
     def _segment_image(self):
         """Segments the image to identify lane structures."""
         log = logging.getLogger('ingredient-color')
@@ -170,12 +169,12 @@ class IngredientSingleColor:
     def _process_vertical_lanes(self):
         """Extracts and processes vertical lanes from the segmented image."""
         log = logging.getLogger('ingredient-color')
-        log.debug(f'Cropping vertical lanes')
         
+        log.debug(f'Cropping vertical lanes')
         self.vertical_lane_images = threshold.crop_vertically(self.segmented_image)
         if not self.vertical_lane_images:
             raise ValueError("No vertical lanes found")
-        
+                
         log.debug(f'Creating VerticalLane objects')
         self.vertical_lanes = [
             VerticalLane(f'V{i}', lane) 
@@ -186,7 +185,7 @@ class IngredientSingleColor:
         """Extracts and processes horizontal lanes from the segmented image."""
         log = logging.getLogger('ingredient-color')
         log.debug(f'Cropping horizontal lanes')
-        
+                
         self.horizontal_lane_images = threshold.crop_horizontally(self.segmented_image)
         if not self.horizontal_lane_images:
             raise ValueError("No horizontal lanes found")
