@@ -104,15 +104,6 @@ def _apply_pipeline(image: np.ndarray, pipeline: list) -> np.ndarray:
     for func in pipeline:
         image = func(image)
     return image
-
-def _apply_normalize(image: np.ndarray) -> np.ndarray:
-    return cv2.normalize(
-        src = image,
-        dst = None,
-        alpha = 0,
-        beta = 255,
-        norm_type = cv2.NORM_MINMAX
-    )
     
 def _apply_gaussian_blur(image: np.ndarray) -> np.ndarray:
     return cv2.GaussianBlur(
