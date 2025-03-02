@@ -40,7 +40,7 @@ def _detect_centroids(image: np.ndarray) -> List[int]:
         image (np.ndarray): Input image.
 
     Returns:
-        List[int]: Centroids of the image.
+        List[int]: Centroids of the image in ascending order.
     """
     binary_image = np.where(image > 0, 255, 0).astype(np.uint8)
     contours = _get_contour(binary_image, 200)
