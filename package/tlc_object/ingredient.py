@@ -78,7 +78,7 @@ class HorizontalLane(Lane):
         lane_name (str): Identifies the lane.
         lane_image (np.ndarray): Image array of the horizontal lane.
         best_fit_line (List[float]): Coefficients describing the best-fit calibration line.
-        r2 (float): R² score indicating the fit quality.
+        r_squared (float): R² score indicating the fit quality.
     """
     def __init__(self, lane_name: str, lane_image: np.ndarray, concentration: List[float]):
         """
@@ -91,7 +91,7 @@ class HorizontalLane(Lane):
         """
         super().__init__(lane_name, lane_image)
         validate_concentration(concentration)
-        self.best_fit_line, self.r2 = calibration.calculate_best_fit_line_for_image(lane_image, concentration)
+        self.best_fit_line, self.r_squared = calibration.calculate_best_fit_line_for_image(lane_image, concentration)
 
     def __str__(self) -> str:
         """
@@ -101,7 +101,7 @@ class HorizontalLane(Lane):
         Lane name: {self.lane_name}
         Lane image shape: {self.lane_image.shape}
         Best fit line: {self.best_fit_line}
-        R2: {self.r2}
+        r_squared: {self.r_squared}
         """
         
 class Substance:
@@ -109,6 +109,7 @@ class Substance:
         self.substance_index = substance_index
         self.slope = horizontal_lane.best_fit_line[0]
         self.intercept = horizontal_lane.best_fit_line[1]
+        self.r_squared = horizontal_lane.r_squared
         self.rf = vertical_lane.rf[substance_index]
 
 class IngredientSingleColor:

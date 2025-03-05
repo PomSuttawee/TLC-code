@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.signal import find_peaks
 
 def calculate_average_intensity(image: np.ndarray, direction: str = 'horizontal') -> np.ndarray:
     if direction == 'horizontal':
@@ -20,10 +21,18 @@ def calculate_minima(image: np.ndarray) -> np.ndarray:
     minima_index = np.sort(np.concatenate((zero_to_non_zero, non_zero_to_zero)))
     return minima_index
 
+def calculate_minima_reversed_peak(image: np.ndarray) -> np.ndarray:
+    intensity = calculate_average_intensity(image)
+    reversed_intensity = 255 - intensity
+    minima = list(find_peaks(reversed_intensity, prominence=3, width=5, distance=30)[0])
+    minima.insert(0, 0)
+    minima.append(len(intensity)-1)
+    return minima
+
 def calculate_peak_area(image: np.ndarray) -> np.ndarray:
     intensity = calculate_average_intensity(image)
-    minima = calculate_minima(image)
+    minima = calculate_minima_reversed_peak(image)
     peak_area = []
-    for index_minima in range(0, len(minima)-1, 2):
+    for index_minima in range(0, len(minima)-1):
         peak_area.append(np.trapz(intensity[minima[index_minima]: minima[index_minima + 1] + 1]))
     return np.array(peak_area)
