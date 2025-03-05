@@ -25,26 +25,26 @@ class MixtureSingleColor:
     Handles the segmentation and Rf value calculation for a single color channel.
 
     Attributes:
-        channel_image (np.ndarray): Image array of the color channel.
+        single_color_image (np.ndarray): Image array of the color channel.
         segmented_image (np.ndarray): Segmented image of the color channel.
         rf (List[float]): Calculated Rf values for the color channel.
     """
-    def __init__(self, name: str, channel_image: np.ndarray):
+    def __init__(self, name: str, single_color_image: np.ndarray):
         """
         Initializes the MixtureSingleColor with a given channel image.
 
         Args:
-            channel_image (np.ndarray): Image array of the color channel.
+            single_color_image (np.ndarray): Image array of the color channel.
         """
         log = logging.getLogger('mixture-color')
         log.info(f'Initializing color channel: {name}')
         
         # Validate inputs
-        validate_image(channel_image)
+        validate_image(single_color_image)
         
         # Store basic attributes
         self.name = name
-        self.channel_image = channel_image
+        self.single_color_image = single_color_image
         
         try:
             self._segment_image()
@@ -57,11 +57,11 @@ class MixtureSingleColor:
     
     def _segment_image(self):
         """Segments the image using thresholding."""
-        self.segmented_image = threshold.segment_mixture(self.channel_image)
+        self.segmented_image = threshold.segment_mixture(self.single_color_image)
         
     def _calculate_rf_and_peak_area(self):
         """Calculates Rf values for the segmented image."""
-        self.rf = rf.calculate_rf_detect_centroid(self.segmented_image)
+        self.rf = rf.calculate_rf_detect_peak(self.segmented_image)
         self.peak_area = general.calculate_peak_area(self.segmented_image)
     
     def _process_substances(self):
