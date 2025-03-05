@@ -57,8 +57,7 @@ def _find_peaks_in_intensity(average_intensity: np.ndarray) -> Tuple[np.ndarray,
     Returns:
         Tuple[np.ndarray, dict]: Peaks in the average intensity and their properties.
     """
-    average_intensity = average_intensity.flatten()
-    return find_peaks(average_intensity, prominence=10, distance=20)
+    return find_peaks(average_intensity, prominence=3, width=5, distance=30)
 
 def calculate_rf_detect_peak(image: np.ndarray) -> List[float]:
     """
