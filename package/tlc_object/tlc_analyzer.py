@@ -1,125 +1,21 @@
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union, Tuple, Optional
 import sympy
 from package.tlc_object.mixture import Mixture, MixtureSingleColor
 from package.tlc_object.ingredient import Ingredient, IngredientSingleColor
-from package.peak_alignment import basic_threshold_range, dynamic_time_warping
+from package.peak_alignment import basic_threshold_range
 from pprint import pprint
 
-"""
-1. Assign group to each ingredient's Rf based on the mixture's Rf.
-2. Calculate the percentage of each ingredient in the mixture.
-"""
-
-def show_equation_solver_process(equation_data):
-    """Demonstrates the internal processing of EquationSolver with real data"""
-    print("\n===== EquationSolver Internal Process =====\n")
-    
-    print("Step 1: Raw Equation Data Input")
-    print("---------------------------------")
-    pprint(equation_data)
-    
-    print("\nStep 2: Creating Symbols")
-    print("-----------------------")
-    # Get ingredient names from the first mixture peak (any would work)
-    first_mixture_idx = list(equation_data.keys())[0]
-    ingredient_names = [name for name in equation_data[first_mixture_idx].keys() 
-                        if name != 'Peak Area']
-    
-    symbol_dict = {name: sympy.Symbol(f'concentration_{name}') for name in ingredient_names}
-    print("Ingredient names:", ingredient_names)
-    print("Symbol dictionary:")
-    for name, symbol in symbol_dict.items():
-        print(f"  {name} → {symbol}")
-    
-    print("\nStep 3: Building Equations")
-    print("-------------------------")
-    equations = []
-    for mixture_index, data in equation_data.items():
-        peak_area = data['Peak Area']
-        print(f"\nMixture Peak {mixture_index} (Area: {peak_area}):")
-        
-        # Show the equation being built
-        each_ingredient_eq = []
-        equation_str_parts = []
-        for ingredient_name, ingredient_data in data.items():
-            if ingredient_name == 'Peak Area':
-                continue
-            
-            slope = ingredient_data['Slope']
-            intercept = ingredient_data['Intercept']
-            symbol = symbol_dict[ingredient_name]
-            
-            each_ingredient_eq.append(slope * symbol + intercept)
-            equation_str_parts.append(f"{slope} * [{ingredient_name}] + {intercept}")
-        
-        print(f"  Equation: {' + '.join(equation_str_parts)} = {peak_area}")
-        equation = sympy.Eq(sum(each_ingredient_eq), peak_area)
-        equations.append(equation)
-        print(f"  Sympy form: {equation}")
-    
-    print("\nStep 4: System of Equations")
-    print("--------------------------")
-    for i, eq in enumerate(equations):
-        print(f"Equation {i}: {eq}")
-    
-    print("\nStep 5: Solving the System")
-    print("-------------------------")
-    symbols = list(symbol_dict.values())
-    print(f"Solving for: {symbols}")
-    try:
-        result = sympy.solve(equations, symbols)
-        print("\nRaw solution:")
-        pprint(result)
-        
-        print("\nStep 6: Converting to Percentages")
-        print("--------------------------------")
-        ingredient_percentages = {}
-        
-        if result:
-            if isinstance(result, dict):
-                print("Processing dictionary solution...")
-                total = sum(float(val) for val in result.values())
-                ingredient_percentages = {
-                    name: (float(result[symbol]) / total) * 100 if total > 0 else 0
-                    for name, symbol in symbol_dict.items()
-                }
-            elif isinstance(result, list):
-                print("Processing list solution...")
-                result_dict = {str(symbol): value for symbol, value in zip(symbols, result[0])}
-                total = sum(float(val) for val in result_dict.values())
-                ingredient_percentages = {
-                    name: (float(result_dict[str(symbol)]) / total) * 100 if total > 0 else 0
-                    for name, symbol in symbol_dict.items()
-                }
-                
-            print("\nRaw concentration values:")
-            if isinstance(result, dict):
-                for name, symbol in symbol_dict.items():
-                    print(f"  {name}: {float(result[symbol])}")
-            else:
-                for i, name in enumerate(ingredient_names):
-                    print(f"  {name}: {float(result[0][i])}")
-                
-            print(f"\nTotal concentration sum: {total}")
-            
-            print("\nFinal percentage results:")
-            for name, percentage in ingredient_percentages.items():
-                print(f"  {name}: {percentage:.2f}%")
-            
-            print(f"\nPercentage sum: {sum(ingredient_percentages.values()):.2f}%")
-        
-    except Exception as e:
-        print(f"Error solving equations: {str(e)}")
-    
-    return ingredient_percentages
+DEFAULT_ALIGNMENT_THRESHOLD = 0.075
+LOGGER_NAME_BASE = 'tlc-analyzer'
 
 class EquationSolver:
     """
-    Solves the equation to calculate ingredient percentages in the mixture.
+    Solves the equation system to calculate ingredient percentages in a mixture.
     
-    This class solves the equation for each color channel and calculates the 
-    percentage of each ingredient in the mixture.
+    This class processes equation data from mixture and ingredient peaks,
+    constructs and solves a system of equations to determine the relative
+    percentages of each ingredient in the mixture.
     """
     def __init__(self, equation_data: Dict[int, Dict[str, Any]]):
         """
@@ -127,57 +23,43 @@ class EquationSolver:
         
         Args:
             equation_data: Dict containing equation data for calculating ingredient percentages
+                Structure: {mixture_index: {'Peak Area': value, ingredient_name: {'Slope': value, 'Intercept': value, 'R_squared': value}}}
         """
-        self.logger = logging.getLogger('tlc-analyzer.equation-solver')
+        self.logger = logging.getLogger(f'{LOGGER_NAME_BASE}.equation-solver')
         self.equation_data = equation_data
         self.ingredient_percentages = {}
         
         self._solve_equations()
     
-    def _solve_equations(self) -> None:
-        """Solve the equations for each color channel."""
-        self.logger.debug('Solving equations')
+    def _get_ingredient_names(self) -> List[str]:
+        """
+        Extract ingredient names from equation data.
         
-        # Create a dict of symbols for each ingredient's concentration
-        ingredient_names = [name for name in self.equation_data[0].keys() if name != 'Peak Area']
-        symbol_dict = {name: sympy.Symbol(f'concentration_{name}') for name in ingredient_names}
-        
-        # Create equations for each mixture peak
-        equations = []
-        for mixture_index, data in self.equation_data.items():
-            self.logger.debug(f'Creating equation for mixture index {mixture_index}')
-            equations.append(self._create_equation(data, symbol_dict))
-        
-        # Get symbols as a list for solving
-        symbols = list(symbol_dict.values())
-        
-        # Solve the equations
-        try:
-            result = sympy.solve(equations, symbols)
-            self.logger.debug(f'Equation solution: {result}')
+        Returns:
+            List of ingredient names
+        """
+        # Get any mixture peak data (they all contain the same ingredients)
+        if not self.equation_data:
+            self.logger.warning("No equation data available")
+            return []
             
-            # Store the results in ingredient_percentages
-            if result:
-                if isinstance(result, dict):
-                    # Handle dict result format
-                    total = sum(float(val) for val in result.values())
-                    self.ingredient_percentages = {
-                        name: (float(result[symbol]) / total) * 100 if total > 0 else 0
-                        for name, symbol in symbol_dict.items()
-                    }
-                elif isinstance(result, list):
-                    # Handle list result format (for single solution)
-                    result_dict = {str(symbol): value for symbol, value in zip(symbols, result[0])}
-                    total = sum(float(val) for val in result_dict.values())
-                    self.ingredient_percentages = {
-                        name: (float(result_dict[str(symbol)]) / total) * 100 if total > 0 else 0
-                        for name, symbol in symbol_dict.items()
-                    }
-        except Exception as e:
-            self.logger.error(f"Error solving equations: {str(e)}")
-            self.ingredient_percentages = {name: 0 for name in ingredient_names}
+        first_mixture_idx = list(self.equation_data.keys())[0]
+        return [name for name in self.equation_data[first_mixture_idx].keys() 
+                if name != 'Peak Area']
+    
+    def _create_symbol_dict(self, ingredient_names: List[str]) -> Dict[str, sympy.Symbol]:
+        """
+        Create a dictionary mapping ingredient names to symbolic variables.
+        
+        Args:
+            ingredient_names: List of ingredient names
             
-    def _create_equation(self, data: Dict[str, Any], symbol_dict: Dict[str, sympy.Symbol]) -> sympy.Eq:
+        Returns:
+            Dictionary mapping ingredient names to their sympy symbols
+        """
+        return {name: sympy.Symbol(f'concentration_{name}') for name in ingredient_names}
+   
+    def _create_equation(self, data: Dict[str, Any], symbol_dict: Dict[str, sympy.Symbol]) -> Tuple[sympy.Eq, float]:
         """
         Create equation for a mixture peak.
         
@@ -186,34 +68,103 @@ class EquationSolver:
             symbol_dict: Dictionary mapping ingredient names to their symbols
         
         Returns:
-            Equation for the mixture peak
+            Tuple of (equation for the mixture peak, average R-squared value)
         """
         peak_area = data['Peak Area']
         
         each_ingredient_eq = []
+        total_r_squared = 0
+        ingredient_count = 0
+        
         for ingredient_name, ingredient_data in data.items():
             if ingredient_name == 'Peak Area':
                 continue
-            
+                
             slope = ingredient_data['Slope']
             intercept = ingredient_data['Intercept']
+            total_r_squared += ingredient_data['R_squared']
+            ingredient_count += 1
+            
             symbol = symbol_dict[ingredient_name]
             each_ingredient_eq.append(slope * symbol + intercept)
+            
+        average_r_squared = total_r_squared / ingredient_count if ingredient_count > 0 else 0
+        equation = sympy.Eq(sum(each_ingredient_eq), peak_area)
         
-        return sympy.Eq(sum(each_ingredient_eq), peak_area)
+        return (equation, average_r_squared)
     
-    def get_ingredient_percentages(self) -> Dict[int, Dict[str, Dict[str, float]]]:
+    def _select_best_equations(self, equations_with_r2: List[Tuple[sympy.Eq, float]], 
+                              num_required: int) -> List[sympy.Eq]:
+        """
+        Select the best equations based on R-squared values.
+        
+        Args:
+            equations_with_r2: List of tuples (equation, R-squared value)
+            num_required: Number of equations needed (typically equal to number of ingredients)
+            
+        Returns:
+            List of selected equations
+        """
+        # Sort by R-squared values in descending order
+        sorted_equations = sorted(equations_with_r2, key=lambda x: x[1], reverse=True)
+        
+        # Select the best equations
+        return [eq for eq, _ in sorted_equations[:num_required]]
+ 
+    def _solve_equations(self) -> None:
+        """
+        Solve the equations for each color channel and calculate ingredient percentages.
+        """
+        self.logger.debug('Solving equations for ingredient percentages')
+        
+        # Get ingredient names and create symbol dictionary
+        ingredient_names = self._get_ingredient_names()
+        if not ingredient_names:
+            self.logger.warning("No ingredients found in equation data")
+            self.ingredient_percentages = {}
+            return
+            
+        symbol_dict = self._create_symbol_dict(ingredient_names)
+        symbols = list(symbol_dict.values())
+        
+        # Create equations for each mixture peak
+        equations_with_r2 = []
+        for mixture_index, data in self.equation_data.items():
+            self.logger.debug(f'Creating equation for mixture index {mixture_index}')
+            equations_with_r2.append(self._create_equation(data, symbol_dict))
+        
+        try:
+            # Select best equations based on R-squared values
+            number_of_equations_needed = len(ingredient_names)
+            selected_equations = self._select_best_equations(equations_with_r2, number_of_equations_needed)
+            
+            if len(selected_equations) < number_of_equations_needed:
+                self.logger.warning(
+                    f"Not enough equations ({len(selected_equations)}) to solve for {number_of_equations_needed} ingredients"
+                )
+                self.ingredient_percentages = {name: 0 for name in ingredient_names}
+                return
+                
+            self.logger.debug(f"Selected {len(selected_equations)} equations with highest R-squared values")
+            
+            # Solve the equation system
+            self.result = sympy.solve(selected_equations, symbols, dict=True)
+            self.logger.info(f'Equation solution: {self.result}')
+            self.logger.info('Equation solving complete')
+              
+        except Exception as e:
+            self.logger.error(f"Error solving equations: {str(e)}", exc_info=True)
+            self.ingredient_percentages = {name: 0 for name in ingredient_names}
+    
+    def get_ingredient_percentages(self) -> Dict[str, float]:
         """
         Get the calculated ingredient percentages.
         
         Returns:
-            Dict containing ingredient percentages for each color channel
+            Dict mapping ingredient names to their calculated percentage in the mixture
         """
         return self.ingredient_percentages
 
-    def show_process(self):
-        """Display the step-by-step solution process"""
-        return show_equation_solver_process(self.equation_data)
 
 class SingleColorAnalyzer:
     """
@@ -222,42 +173,67 @@ class SingleColorAnalyzer:
     This class maps ingredient peaks to mixture peaks and prepares data for 
     calculating the percentage of each ingredient in the mixture.
     """
-    def __init__(self, mixture_single_color: MixtureSingleColor, ingredients_single_color: List[IngredientSingleColor], 
-                 threshold: float = 0.075):
+    def __init__(self, mixture_single_color: MixtureSingleColor, 
+                 ingredients_single_color: List[IngredientSingleColor], 
+                 threshold: float = DEFAULT_ALIGNMENT_THRESHOLD):
         """
         Initialize the analyzer for a single color channel.
         
         Args:
             mixture_single_color: MixtureSingleColor object containing mixture data
             ingredients_single_color: List of IngredientSingleColor objects
-            threshold: Threshold value for peak alignment (default: 0.075)
+            threshold: Threshold value for peak alignment
         """
-        self.logger = logging.getLogger('tlc-analyzer.single-color')
+        self.logger = logging.getLogger(f'{LOGGER_NAME_BASE}.single-color')
         self.mixture_single_color = mixture_single_color
         self.ingredients_single_color = ingredients_single_color
         self.threshold = threshold
         self.equation_data = {}
+        self.equation_solver = None
         
+        # Process the data
         self._validate_inputs()
-        self._map_ingredients_to_mixture()
-        self._create_equation_data()
-        self._solve_equations()
+        self._process_data()
         
     def _validate_inputs(self) -> None:
-        """Validate input parameters."""
+        """
+        Validate input parameters.
+        
+        Raises:
+            TypeError: If inputs are not of expected types
+        """
         if not isinstance(self.mixture_single_color, MixtureSingleColor):
             raise TypeError(f'Expected MixtureSingleColor object, got {type(self.mixture_single_color)}')
         
         if not isinstance(self.ingredients_single_color, list):
-            raise TypeError(f'Expected list of IngredientSingleColor object, got {type(self.ingredients_single_color)}')
+            raise TypeError(f'Expected list of IngredientSingleColor objects, got {type(self.ingredients_single_color)}')
         
-        for ingredient in self.ingredients_single_color:
+        for idx, ingredient in enumerate(self.ingredients_single_color):
             if not isinstance(ingredient, IngredientSingleColor):
-                raise TypeError(f'Expected IngredientSingleColor object, got {type(ingredient)}')
+                raise TypeError(f'Expected IngredientSingleColor object at index {idx}, got {type(ingredient)}')
+                
+        if self.ingredients_single_color and not self.mixture_single_color.substances:
+            self.logger.warning("Mixture doesn't contain any substances")
+            
+        for ingredient in self.ingredients_single_color:
+            if not ingredient.substances:
+                self.logger.warning(f"Ingredient '{ingredient.name}' doesn't contain any substances")
     
+    def _process_data(self) -> None:
+        """
+        Process the data by mapping peaks, creating equation data, and solving equations.
+        """
+        self._map_ingredients_to_mixture()
+        self._create_equation_data()
+        self._solve_equations()
+        
     def _map_ingredients_to_mixture(self) -> None:
-        """Map ingredients' substance indices to mixture's substance indices."""
+        """
+        Map ingredients' substance indices to mixture's substance indices.
+        """
         self.logger.debug("Mapping ingredient peaks to mixture peaks")
+        
+        # Align peaks between mixture and ingredients
         self.ingredient_to_mixture_map = self._align_peaks()
         
         # Extract mixture peak areas
@@ -266,73 +242,89 @@ class SingleColorAnalyzer:
             for substance in self.mixture_single_color.substances
         }
         
-        # Extract ingredient slopes and intercepts
-        self.ingredient_slope_intercept = {
-            ingredient.name: {
-                substance.substance_index: (substance.slope, substance.intercept) 
-                for substance in ingredient.substances
-            } 
-            for ingredient in self.ingredients_single_color
-        }
+        # Extract ingredient calibration data
+        self.ingredient_data = {}
+        for ingredient in self.ingredients_single_color:
+            self.ingredient_data[ingredient.name] = {}
+            for substance in ingredient.substances:
+                self.ingredient_data[ingredient.name][substance.substance_index] = (
+                    substance.slope, 
+                    substance.intercept, 
+                    substance.r_squared
+                )
         
-        # Map ingredient slopes and intercepts to mixture indices
-        self.mapped_ingredient_slope_intercept = {ingredient.name: {} for ingredient in self.ingredients_single_color}
+        # Map ingredient data to mixture indices
+        self.mapped_ingredient_data = {ingredient.name: {} for ingredient in self.ingredients_single_color}
         
         for ingredient in self.ingredients_single_color:
             for ingredient_index, mixture_index in self.ingredient_to_mixture_map.items():
-                self.mapped_ingredient_slope_intercept[ingredient.name][mixture_index] = \
-                    self.ingredient_slope_intercept[ingredient.name][ingredient_index]
+                if ingredient_index in self.ingredient_data[ingredient.name]:
+                    self.mapped_ingredient_data[ingredient.name][mixture_index] = self.ingredient_data[ingredient.name][ingredient_index]
     
     def _create_equation_data(self) -> None:
         """
-        Create equation data from mixture's peak area and ingredient's slope and intercept.
+        Create equation data from mixture's peak area and ingredient's calibration data.
         
         Result structure:
         {
-            Mixture Index: {
+            mixture_index: {
                 'Peak Area': peak_area, 
-                Ingredient Name: {'Slope': slope, 'Intercept': intercept}
+                ingredient_name: {'Slope': slope, 'Intercept': intercept, 'R_squared': r_squared}
             }
         }
         """
-        self.logger.debug("Creating equation data")
+        self.logger.debug("Creating equation data from peak mappings")
         self.equation_data = {}
         
+        # For each mixture substance, collect data for equation building
         for substance in self.mixture_single_color.substances:
             mixture_index = substance.substance_index
             peak_area = self.mixture_peak_area[mixture_index]
+            
+            # Initialize with peak area
             self.equation_data[mixture_index] = {'Peak Area': peak_area}
             
+            # Add ingredient data for this peak
+            ingredient_count = 0
             for ingredient in self.ingredients_single_color:
-                if mixture_index in self.mapped_ingredient_slope_intercept[ingredient.name]:
-                    slope, intercept = self.mapped_ingredient_slope_intercept[ingredient.name][mixture_index]
+                if mixture_index in self.mapped_ingredient_data[ingredient.name]:
+                    slope, intercept, r_squared = self.mapped_ingredient_data[ingredient.name][mixture_index]
                     self.equation_data[mixture_index][ingredient.name] = {
                         'Slope': slope, 
-                        'Intercept': intercept
+                        'Intercept': intercept,
+                        'R_squared': r_squared
                     }
+                    ingredient_count += 1
+            
+            # Remove mixture peaks with no ingredient data
+            if ingredient_count == 0:
+                del self.equation_data[mixture_index]
+                self.logger.debug(f"Removed mixture peak {mixture_index} with no ingredient data")
         
         self._log_equation_data()
     
     def _log_equation_data(self) -> None:
         """Log the equation data for debugging purposes."""
-        for mixture_index, value in self.equation_data.items():
-            self.logger.debug(f'Mixture Index: {mixture_index}')
-            self.logger.debug(f'\tPeak Area: {value["Peak Area"]}')
-            
-            for ingredient_name, ingredient_data in value.items():
-                if ingredient_name == 'Peak Area':
-                    continue
-                self.logger.debug(f'\tIngredient Name: {ingredient_name}')
-                self.logger.debug(f'\t\tIngredient Slope and Intercept: {ingredient_data}')
+        self.logger.debug(f"Created equation data for {len(self.equation_data)} mixture peaks")
+        
+        for mixture_index, data in self.equation_data.items():
+            ingredients = [name for name in data.keys() if name != 'Peak Area']
+            self.logger.debug(f"  Mixture peak {mixture_index}: Peak Area={data['Peak Area']:.4f}, "
+                             f"Ingredients={', '.join(ingredients)}")
     
     def _solve_equations(self) -> None:
-        """Solve the equations for each color channel."""
-        self.logger.debug('Solving equations')
-        self.equation_solver = EquationSolver(self.equation_data)
+        """
+        Solve the equations to determine ingredient percentages.
+        """
+        self.logger.debug('Solving equations using EquationSolver')
+        if self.equation_data:
+            self.equation_solver = EquationSolver(self.equation_data)
+        else:
+            self.logger.warning("No equation data available to solve")
     
     def _align_peaks(self) -> Dict[int, int]:
         """
-        Align ingredient peaks with mixture peaks.
+        Align ingredient peaks with mixture peaks using threshold method.
         
         Returns:
             Dict mapping ingredient substance indices to mixture substance indices
@@ -343,18 +335,6 @@ class SingleColorAnalyzer:
             self.threshold
         )
 
-    def align_using_dtw(self) -> Dict[int, int]:
-        """
-        Align peaks using dynamic time warping algorithm.
-        
-        Returns:
-            Dict mapping ingredient substance indices to mixture substance indices
-        """
-        return dynamic_time_warping.align_peak(
-            self.mixture_single_color, 
-            self.ingredients_single_color
-        )
-
     def get_equation_data(self) -> Dict[int, Dict[str, Any]]:
         """
         Get the equation data.
@@ -363,6 +343,17 @@ class SingleColorAnalyzer:
             Dict containing equation data for calculating ingredient percentages
         """
         return self.equation_data
+        
+    def get_ingredient_percentages(self) -> Dict[str, float]:
+        """
+        Get the calculated ingredient percentages.
+        
+        Returns:
+            Dict mapping ingredient names to their percentage
+        """
+        if self.equation_solver:
+            return self.equation_solver.get_ingredient_percentages()
+        return {}
 
 
 class TLCAnalyzer:
@@ -373,7 +364,7 @@ class TLCAnalyzer:
     combines the results to determine the composition of the mixture.
     """
     def __init__(self, mixture_object: Mixture, ingredient_objects: List[Ingredient], 
-                 alignment_threshold: float = 0.075):
+                 alignment_threshold: float = DEFAULT_ALIGNMENT_THRESHOLD):
         """
         Initialize the TLC analyzer.
         
@@ -382,31 +373,53 @@ class TLCAnalyzer:
             ingredient_objects: List of Ingredient objects
             alignment_threshold: Threshold value for peak alignment
         """
-        self.logger = logging.getLogger('tlc-analyzer')
+        self.logger = logging.getLogger(LOGGER_NAME_BASE)
         self.logger.info('Initializing TLCAnalyzer')
         
         self.mixture_object = mixture_object
         self.ingredient_objects = ingredient_objects if isinstance(ingredient_objects, list) else [ingredient_objects]
         self.alignment_threshold = alignment_threshold
         
+        # Color-specific analyzers
+        self.red_analyzer = None
+        self.green_analyzer = None
+        self.blue_analyzer = None
+        
+        # Initialize and process
         self._validate_inputs()
         self._initialize_color_analyzers()
         
         self.logger.info('TLCAnalyzer initialization complete')
     
     def _validate_inputs(self) -> None:
-        """Validate input parameters."""
+        """
+        Validate input parameters.
+        
+        Raises:
+            TypeError: If inputs are not of expected types
+            ValueError: If no ingredients are provided
+        """
         if not isinstance(self.mixture_object, Mixture):
             raise TypeError(f'Expected Mixture object, got {type(self.mixture_object)}')
         
-        if not isinstance(self.ingredient_objects, list):
-            raise TypeError(f'Expected list of Ingredient object, got {type(self.ingredient_objects)}')
+        if not self.ingredient_objects:
+            raise ValueError('At least one ingredient must be provided')
         
-        if not all(isinstance(ingredient, Ingredient) for ingredient in self.ingredient_objects):
-            raise TypeError('All ingredients must be Ingredient objects')
+        if not isinstance(self.ingredient_objects, list):
+            raise TypeError(f'Expected list of Ingredient objects, got {type(self.ingredient_objects)}')
+        
+        for idx, ingredient in enumerate(self.ingredient_objects):
+            if not isinstance(ingredient, Ingredient):
+                raise TypeError(f'Ingredient at index {idx} must be an Ingredient object, got {type(ingredient)}')
     
     def _initialize_color_analyzers(self) -> None:
-        """Initialize analyzers for each color channel."""
+        """
+        Initialize analyzers for each color channel (RGB).
+        """
+        # Initialize with logging for tracking analysis progress
+        self.logger.info(f'Initializing color channel analyzers (threshold={self.alignment_threshold:.4f})')
+        
+        # Red channel
         self.logger.debug('Initializing SingleColorAnalyzer for red channel')
         self.red_analyzer = SingleColorAnalyzer(
             self.mixture_object.red_channel_mixture,
@@ -414,6 +427,7 @@ class TLCAnalyzer:
             self.alignment_threshold
         )
         
+        # Green channel
         self.logger.debug('Initializing SingleColorAnalyzer for green channel')
         self.green_analyzer = SingleColorAnalyzer(
             self.mixture_object.green_channel_mixture,
@@ -421,12 +435,15 @@ class TLCAnalyzer:
             self.alignment_threshold
         )
         
+        # Blue channel
         self.logger.debug('Initializing SingleColorAnalyzer for blue channel')
         self.blue_analyzer = SingleColorAnalyzer(
             self.mixture_object.blue_channel_mixture,
             [ingredient.blue_channel_ingredient for ingredient in self.ingredient_objects],
             self.alignment_threshold
         )
+        
+        self.logger.debug('All color channel analyzers initialized')
     
     def get_all_equation_data(self) -> Dict[str, Dict[int, Dict[str, Any]]]:
         """
@@ -439,4 +456,17 @@ class TLCAnalyzer:
             'red': self.red_analyzer.get_equation_data(),
             'green': self.green_analyzer.get_equation_data(),
             'blue': self.blue_analyzer.get_equation_data()
+        }
+        
+    def get_all_ingredient_percentages(self) -> Dict[str, Dict[str, float]]:
+        """
+        Get calculated ingredient percentages for all channels.
+        
+        Returns:
+            Dict with keys 'red', 'green', 'blue' mapping to ingredient percentage results
+        """
+        return {
+            'red': self.red_analyzer.get_ingredient_percentages(),
+            'green': self.green_analyzer.get_ingredient_percentages(),
+            'blue': self.blue_analyzer.get_ingredient_percentages()
         }
