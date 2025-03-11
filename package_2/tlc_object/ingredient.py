@@ -1,9 +1,8 @@
 import numpy as np
 import cv2
-import matplotlib.pyplot as plt
 
 from package_2.image_processing.detect_paper import crop_to_paper
-from package_2.image_processing.detect_solvent_front_and_origin import crop_solvent_front_and_origin
+from package_2.image_processing.detect_solvent_front_and_origin import crop_solvent_front_and_origin, visualize_process
 from package_2.image_processing.segment_substance_spot import segment_hsv_threshold_range
 from package_2.image_processing.crop_vertical_lane import crop_vertical_lane_images
 from package_2.image_processing.crop_horizontal_lane import crop_horizontal_lane_images
@@ -19,7 +18,7 @@ class Substance:
         self.intercept = intercept
         self.r_squared = r_squared
 
-class IngredientSingleColor:
+class IngredientSingleChannel:
     def __init__(self, name: str, image: np.ndarray, concentration_list: list):
         self.name = name
         self.image = image
@@ -63,13 +62,26 @@ class Ingredient:
         self.paper_image = self._process_image()
         self.segmented_image = self._segment_image()
         
-        self.gray_ingredient = IngredientSingleColor(self.name + "_gray", self._get_gray_image(), self.concentration_list)
+        self.gray_ingredient = IngredientSingleChannel(self.name + "_gray", self._convert_to_gray(self.segmented_image), self.concentration_list)
+
+    def visualize_process(self):
+        from package_2.image_processing import detect_paper, detect_solvent_front_and_origin, segment_substance_spot, crop_vertical_lane, crop_horizontal_lane
+        from package_2.data_extractor import rf
+        detect_paper.visualize_process(self.image)
+        detect_solvent_front_and_origin.visualize_process(crop_to_paper(self.image))
+        segment_substance_spot.visualize_process(self.paper_image)
+        crop_vertical_lane.visualize_process(self._convert_to_gray(self.segmented_image))
+        crop_horizontal_lane.visualize_process(self._convert_to_gray(self.segmented_image))
         
+        vertical_lanes = crop_vertical_lane_images(self._convert_to_gray(self.segmented_image))
+        candidate_vertical_lane = self.gray_ingredient._find_candidate_vertical_lane_image(vertical_lanes)
+        rf.visualize_process(candidate_vertical_lane)
+    
     def _process_image(self):
         return crop_solvent_front_and_origin(crop_to_paper(self.image))
     
     def _segment_image(self):
         return segment_hsv_threshold_range(self.paper_image)
 
-    def _get_gray_image(self):
-        return cv2.cvtColor(self.segmented_image, cv2.COLOR_RGB2GRAY)
+    def _convert_to_gray(self, image: np.ndarray) -> np.ndarray:
+        return cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
