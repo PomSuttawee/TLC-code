@@ -103,3 +103,45 @@ def _crop_convex_hulls(image: np.ndarray, convex_hulls: list):
         bounding_rect = cv2.boundingRect(cropped_image)
         cropped_images.append(cropped_image[bounding_rect[1]:bounding_rect[1]+bounding_rect[3], bounding_rect[0]:bounding_rect[0]+bounding_rect[2]])
     return cropped_images
+
+def visualize_process(image: np.ndarray):
+    contours = _get_contours(image)
+    bounding_boxes = _get_bounding_boxes(contours)
+    splitted_overlap_bounding_boxes = _split_overlap_bounding_boxes(image, bounding_boxes)
+    grouped_bounding_boxes = _group_horizontal_bounding_boxes(image, splitted_overlap_bounding_boxes)
+    convex_hulls = _create_convex_hulls(grouped_bounding_boxes)
+    sorted_convex_hulls = sorted(convex_hulls, key=lambda x: cv2.boundingRect(x)[1])
+    cropped_images = _crop_convex_hulls(image, sorted_convex_hulls)
+    
+    image_with_contours = cv2.drawContours(image.copy(), contours, -1, (255, 255, 255), 2)
+    image_with_bounding_boxes = image.copy()
+    image_with_splitted_overlap_bounding_boxes = image.copy()
+    image_with_grouped_bounding_boxes = image.copy()
+    image_With_convex_hulls = image.copy()
+    
+    for box in bounding_boxes:
+        x, y, w, h = box
+        cv2.rectangle(image_with_bounding_boxes, (x, y), (x+w, y+h), (255, 255, 255), 2)
+    for box in splitted_overlap_bounding_boxes:
+        x, y, w, h = box
+        cv2.rectangle(image_with_splitted_overlap_bounding_boxes, (x, y), (x+w, y+h), (255, 255, 255), 2)
+    for i, group in enumerate(grouped_bounding_boxes):
+        for box in group:
+            x, y, w, h = box
+            cv2.rectangle(image_with_grouped_bounding_boxes, (x, y), (x+w, y+h), (255, 255, 255), 2)
+            cv2.putText(image_with_grouped_bounding_boxes, str(i), (x+5, y+h-10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2)
+    for hull in convex_hulls:
+        cv2.drawContours(image_With_convex_hulls, [hull], -1, (255, 255, 255), 2)
+    
+    import matplotlib.pyplot as plt
+    fig, axs = plt.subplots(2, 3, figsize=(18, 12))
+    axs[0, 0].imshow(image, cmap='gray'), axs[0, 0].set_title("Original Image")
+    axs[0, 1].imshow(image_with_contours, cmap='gray'), axs[0, 1].set_title("Contours")
+    axs[0, 2].imshow(image_with_bounding_boxes, cmap='gray'), axs[0, 2].set_title("Bounding Boxes")
+    axs[1, 0].imshow(image_with_splitted_overlap_bounding_boxes, cmap='gray'), axs[1, 0].set_title("Splitted Overlap Bounding Boxes")
+    axs[1, 1].imshow(image_with_grouped_bounding_boxes, cmap='gray'), axs[1, 1].set_title("Grouped Bounding Boxes")
+    axs[1, 2].imshow(image_With_convex_hulls, cmap='gray'), axs[1, 2].set_title("Convex Hulls")
+    for ax in axs.flat:
+        ax.axis('off')
+    plt.tight_layout()
+    plt.show()

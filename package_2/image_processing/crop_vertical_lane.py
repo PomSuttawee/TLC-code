@@ -90,3 +90,38 @@ def _merge_overlap_bounding_boxes(rect_list: list) -> list:
             final_rect.append(rect_list[i])
         i += 1
     return final_rect
+
+def visualize_process(image: np.ndarray):
+    contours = _get_contours(image)
+    bounding_boxes = _get_bounding_boxes_max_height(contours, image.shape[0])
+    merged_bounding_boxes = _merge_overlap_bounding_boxes(bounding_boxes)
+    sorted_bounding_boxes = sorted(merged_bounding_boxes, key=lambda x: x[0])
+    cropped_images = _crop_bounding_boxes(image, sorted_bounding_boxes)
+    
+    image_with_contours = cv2.drawContours(image.copy(), contours, -1, (255, 255, 255), 2)
+    image_with_all_boxes = image.copy()
+    image_with_merged_boxes = image.copy()
+    image_with_sorted_boxes = image.copy()
+    
+    for box in bounding_boxes:
+        x, y, w, h = box
+        cv2.rectangle(image_with_all_boxes, (x, y), (x+w, y+h), (255, 255, 255), 2)
+    for box in merged_bounding_boxes:
+        x, y, w, h = box
+        cv2.rectangle(image_with_merged_boxes, (x, y), (x+w, y+h), (255, 255, 255), 2)
+    for i, box in enumerate(sorted_bounding_boxes):
+        x, y, w, h = box
+        cv2.rectangle(image_with_sorted_boxes, (x, y), (x+w, y+h), (255, 255, 255), 2)
+        cv2.putText(image_with_sorted_boxes, str(i), (x+(w//2)-10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+    
+    import matplotlib.pyplot as plt
+    fig, axs = plt.subplots(2, 3, figsize=(15, 15))
+    axs[0, 0].imshow(image, cmap='gray'), axs[0, 0].set_title('Original Image')
+    axs[0, 1].imshow(image_with_contours, cmap='gray'), axs[0, 1].set_title('Image with Contours')
+    axs[0, 2].imshow(image_with_all_boxes, cmap='gray'), axs[0, 2].set_title('Image with All Boxes')
+    axs[1, 0].imshow(image_with_merged_boxes, cmap='gray'), axs[1, 0].set_title('Image with Merged Boxes')
+    axs[1, 1].imshow(image_with_sorted_boxes, cmap='gray'), axs[1, 1].set_title('Image with Sorted Boxes')
+    for ax in axs.flat:
+        ax.axis('off')
+    plt.tight_layout()
+    plt.show()

@@ -13,13 +13,13 @@ def _is_valid_angle(line):
 
 def _is_valid_y_coordinate(image, line):
     x1, y1, x2, y2 = line
-    valid_range = [0.05 * image.shape[0], 0.95 * image.shape[0]]
+    valid_range = [0.025 * image.shape[0], 0.975 * image.shape[0]]
     return y1 >= valid_range[0] and y2 >= valid_range[0] and y1 <= valid_range[1] and y2 <= valid_range[1]
 
 def _is_valid_line(image, line):
     return _is_valid_length(line) and _is_valid_angle(line) and _is_valid_y_coordinate(image, line)
 
-def filter_valid_lines(image: np.ndarray, lines: list) -> list:
+def _filter_valid_lines(image: np.ndarray, lines: list) -> list:
     return [line for line in lines if _is_valid_line(image, line)]
 
 def _detect_line_lsd(image: np.ndarray) -> np.ndarray:
@@ -57,7 +57,7 @@ def crop_solvent_front_and_origin(image: np.ndarray) -> np.ndarray:
     if lines is None:
         raise ValueError("No lines found in the image.")
     
-    valid_lines = filter_valid_lines(image, lines)
+    valid_lines = _filter_valid_lines(image, lines)
     if not valid_lines:
         raise ValueError("No valid lines found in the image.")
     
@@ -72,3 +72,56 @@ def crop_solvent_front_and_origin(image: np.ndarray) -> np.ndarray:
     cropped_image = _crop_by_y_coordinate(image, (average_top_line, average_bottom_line))
      
     return cropped_image
+
+def visualize_process(image: np.ndarray):
+    lines = _detect_line_lsd(image)
+    if lines is None:
+        raise ValueError("No lines found in the image.")
+    
+    valid_lines = _filter_valid_lines(image, lines)
+    if not valid_lines:
+        raise ValueError("No valid lines found in the image.")
+    
+    top_lines, bottom_lines = _filter_top_and_bottom_lines(image, valid_lines)
+    if not top_lines:
+        raise ValueError("No top lines found in the image.")
+    elif not bottom_lines:
+        raise ValueError("No bottom lines found in the image.")
+    
+    average_top_line = _calculate_average_y(top_lines)
+    average_bottom_line = _calculate_average_y(bottom_lines)
+    cropped_image = _crop_by_y_coordinate(image, (average_top_line, average_bottom_line))
+    
+    image_with_all_lines = image.copy()
+    image_with_valid_lines = image.copy()
+    image_with_top_lines = image.copy()
+    image_with_bottom_lines = image.copy()
+    image_with_average_lines = image.copy()
+    
+    for line in lines:
+        x1, y1, x2, y2 = line
+        cv2.line(image_with_all_lines, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+    for line in valid_lines:
+        x1, y1, x2, y2 = line
+        cv2.line(image_with_valid_lines, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+    for line in top_lines:
+        x1, y1, x2, y2 = line
+        cv2.line(image_with_top_lines, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+    for line in bottom_lines:
+        x1, y1, x2, y2 = line
+        cv2.line(image_with_bottom_lines, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+    for line in [average_top_line, average_bottom_line]:
+        cv2.line(image_with_average_lines, (0, int(line)), (image.shape[1], int(line)), (0, 255, 0), 2)
+    
+    import matplotlib.pyplot as plt
+    fig, axs = plt.subplots(3, 3, figsize=(18, 18))
+    axs[0, 0].imshow(image), axs[0, 0].set_title("Original Image")
+    axs[0, 1].imshow(image_with_all_lines), axs[0, 1].set_title("All Lines")
+    axs[0, 2].imshow(image_with_valid_lines), axs[0, 2].set_title("Valid Lines")
+    axs[1, 0].imshow(image_with_top_lines), axs[1, 0].set_title("Top Lines")
+    axs[1, 1].imshow(image_with_bottom_lines), axs[1, 1].set_title("Bottom Lines")
+    axs[1, 2].imshow(image_with_average_lines), axs[1, 2].set_title("Average Lines")
+    axs[2, 0].imshow(cropped_image), axs[2, 0].set_title("Cropped Image")
+    for ax in axs.flat:
+        ax.axis('off')
+    plt.show()

@@ -36,3 +36,35 @@ def crop_to_paper(image: np.ndarray) -> np.ndarray:
     
     union_contours = _union_contours(big_contours)
     return _crop_by_contours(image, union_contours)
+
+def visualize_process(image: np.ndarray):
+    contours = _detect_contours(image)
+    if not contours:
+        raise ValueError("No contours found.")
+    
+    big_contours = _remove_small_contours(contours, 200)
+    if not contours:
+        raise ValueError(f"No contours with area > {200} found.")
+    
+    union_contours = _union_contours(big_contours)
+
+    image_with_contours = image.copy()
+    image_with_big_contours = image.copy()
+    image_with_union_contours = image.copy()
+    
+    image_with_contours = cv2.drawContours(image_with_contours, contours, -1, (0, 255, 0), 3)
+    image_with_big_contours = cv2.drawContours(image_with_big_contours, big_contours, -1, (0, 255, 0), 3)
+    image_with_union_contours = cv2.rectangle(image_with_union_contours, (union_contours[0], union_contours[1]), (union_contours[0] + union_contours[2], union_contours[1] + union_contours[3]), (0, 255, 0), 3)
+    cropped_image = _crop_by_contours(image, union_contours)
+    
+    import matplotlib.pyplot as plt
+    fig, axs = plt.subplots(2, 3, figsize=(18, 18))
+    axs[0, 0].imshow(image), axs[0, 0].set_title('Original Image')
+    axs[0, 1].imshow(image_with_contours), axs[0, 1].set_title('Image with Contours')
+    axs[0, 2].imshow(image_with_big_contours), axs[0, 2].set_title('Image with Big Contours')
+    axs[1, 0].imshow(image_with_union_contours), axs[1, 0].set_title('Image with Union Contours')
+    axs[1, 1].imshow(cropped_image), axs[1, 1].set_title('Cropped Image')
+    
+    for ax in axs.flat:
+        ax.axis('off')
+    plt.show()
