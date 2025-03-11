@@ -115,7 +115,7 @@ def visualize_process(image: np.ndarray):
         cv2.putText(image_with_sorted_boxes, str(i), (x+(w//2)-10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
     
     import matplotlib.pyplot as plt
-    fig, axs = plt.subplots(2, 3, figsize=(15, 15))
+    fig, axs = plt.subplots(2, 3, figsize=(18, 18))
     axs[0, 0].imshow(image, cmap='gray'), axs[0, 0].set_title('Original Image')
     axs[0, 1].imshow(image_with_contours, cmap='gray'), axs[0, 1].set_title('Image with Contours')
     axs[0, 2].imshow(image_with_all_boxes, cmap='gray'), axs[0, 2].set_title('Image with All Boxes')

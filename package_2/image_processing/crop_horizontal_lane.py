@@ -134,7 +134,7 @@ def visualize_process(image: np.ndarray):
         cv2.drawContours(image_With_convex_hulls, [hull], -1, (255, 255, 255), 2)
     
     import matplotlib.pyplot as plt
-    fig, axs = plt.subplots(2, 3, figsize=(18, 12))
+    fig, axs = plt.subplots(2, 3, figsize=(18, 18))
     axs[0, 0].imshow(image, cmap='gray'), axs[0, 0].set_title("Original Image")
     axs[0, 1].imshow(image_with_contours, cmap='gray'), axs[0, 1].set_title("Contours")
     axs[0, 2].imshow(image_with_bounding_boxes, cmap='gray'), axs[0, 2].set_title("Bounding Boxes")
