@@ -10,7 +10,7 @@ Line = Tuple[float, float, float, float]  # (x1, y1, x2, y2)
 Image = np.ndarray
 
 # Constants for line detection
-MIN_LINE_LENGTH_FACTOR = 0.2  # Minimum line length as factor of image width
+MIN_LINE_LENGTH_FACTOR = 0.15  # Minimum line length as factor of image width
 MAX_ANGLE_DEVIATION = 5  # Maximum deviation from horizontal in degrees
 TOP_RANGE = (0.025, 0.1)  # Valid range for top lines (as percentage of image height)
 BOTTOM_RANGE = (0.9, 0.975)  # Valid range for bottom lines (as percentage of image height)
