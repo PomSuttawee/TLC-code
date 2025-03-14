@@ -118,7 +118,7 @@ class PaperDetector:
         masked_image = cv2.bitwise_and(image, mask)
         
         # Get bounding rectangle
-        gray_masked = cv2.cvtColor(masked_image, cv2.COLOR_RGB2GRAY)
+        gray_masked = cv2.cvtColor(masked_image, cv2.COLOR_BGR2GRAY)
         x, y, w, h = cv2.boundingRect(gray_masked)
         
         # Crop image to bounding rectangle
