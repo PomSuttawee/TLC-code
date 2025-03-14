@@ -3,7 +3,7 @@ Module for detecting and cropping TLC plate images based on solvent front and or
 """
 import cv2
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 
 # Type aliases
 Line = Tuple[float, float, float, float]  # (x1, y1, x2, y2)
@@ -293,12 +293,3 @@ class TLCVisualizer:
                 
         plt.tight_layout()
         plt.show()
-
-
-def crop_solvent_front_and_origin(image: Image) -> Image:
-    """Backward compatibility function."""
-    return TLCImageProcessor.crop_solvent_front_and_origin(image)
-
-def visualize_process(image: Image) -> None:
-    """Backward compatibility function."""
-    TLCVisualizer.visualize_process(image)
