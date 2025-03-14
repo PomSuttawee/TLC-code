@@ -1,70 +1,127 @@
-import cv2
+"""
+Module for detecting and cropping to paper boundaries in images.
+"""
 import numpy as np
+import cv2
+from typing import List
 
-def _detect_contours(image: np.ndarray) -> list:
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    gray_blur = cv2.GaussianBlur(gray, (5, 5), 0)
-    _, thresh = cv2.threshold(gray_blur, 200, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE) 
-    return contours
+# Type aliases
+Image = np.ndarray
+Contour = np.ndarray
 
-def _remove_small_contours(contours: list, min_area: int) -> list:
-    return [contour for contour in contours if cv2.contourArea(contour) > min_area]
+# Constants
+GAUSSIAN_BLUR_KERNEL_SIZE = (5, 5)
+GAUSSIAN_BLUR_SIGMA = 0
 
-def _union_contours(contours: list) -> tuple:
-    x, y, w, h = cv2.boundingRect(contours[0])
-    for contour in contours:
-        x_temp, y_temp, w_temp, h_temp = cv2.boundingRect(contour)
-        x = min(x, x_temp)
-        y = min(y, y_temp)
-        w = max(w, w_temp)
-        h = max(h, h_temp)
-    return x, y, w, h
 
-def _crop_by_contours(image: np.ndarray, contour: list) -> np.ndarray:
-    x, y, w, h = contour
-    return image[y:y+h, x:x+w]
-
-def crop_to_paper(image: np.ndarray) -> np.ndarray:
-    contours = _detect_contours(image)
-    if not contours:
-        raise ValueError("No contours found.")
+class PaperDetector:
+    """Class for detecting and cropping to paper boundaries in images."""
     
-    big_contours = _remove_small_contours(contours, 200)
-    if not contours:
-        raise ValueError(f"No contours with area > {200} found.")
+    @staticmethod
+    def crop_to_paper(image: Image) -> Image:
+        """
+        Detect paper boundaries in an image and crop to those boundaries.
+        
+        Args:
+            image: Input color image
+            
+        Returns:
+            Image cropped to paper boundaries
+            
+        Raises:
+            ValueError: If no paper boundaries can be detected
+        """
+        contours = PaperDetector._get_contours(image)
+        if not contours:
+            raise ValueError("No paper boundaries detected in the image.")
+            
+        largest_contour = PaperDetector._get_largest_contour(contours)
+        return PaperDetector._crop_image_using_contour(image, largest_contour)
     
-    union_contours = _union_contours(big_contours)
-    return _crop_by_contours(image, union_contours)
-
-def visualize_process(image: np.ndarray):
-    contours = _detect_contours(image)
-    if not contours:
-        raise ValueError("No contours found.")
+    @staticmethod
+    def _get_contours(image: Image) -> List[Contour]:
+        """
+        Detect contours in the image that could represent paper boundaries.
+        
+        Args:
+            image: Input color image
+            
+        Returns:
+            List of detected contours
+        """
+        # Input validation
+        if image is None or image.size == 0:
+            raise ValueError("Invalid input image")
+            
+        # Convert to grayscale
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Apply Gaussian blur to reduce noise
+        gray_blur = cv2.GaussianBlur(
+            gray, 
+            GAUSSIAN_BLUR_KERNEL_SIZE, 
+            GAUSSIAN_BLUR_SIGMA
+        )
+        
+        # Apply Otsu's thresholding
+        threshold = cv2.threshold(
+            gray_blur, 
+            0, 255, 
+            cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )[1]
+        
+        # Find contours
+        contours, _ = cv2.findContours(
+            threshold, 
+            cv2.RETR_EXTERNAL, 
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+        
+        return contours
     
-    big_contours = _remove_small_contours(contours, 200)
-    if not contours:
-        raise ValueError(f"No contours with area > {200} found.")
+    @staticmethod
+    def _get_largest_contour(contours: List[Contour]) -> Contour:
+        """
+        Select the largest contour by area.
+        
+        Args:
+            contours: List of contours
+            
+        Returns:
+            Largest contour
+            
+        Raises:
+            ValueError: If contours list is empty
+        """
+        if not contours:
+            raise ValueError("No contours provided")
+            
+        return max(contours, key=cv2.contourArea)
     
-    union_contours = _union_contours(big_contours)
-
-    image_with_contours = image.copy()
-    image_with_big_contours = image.copy()
-    image_with_union_contours = image.copy()
-    
-    image_with_contours = cv2.drawContours(image_with_contours, contours, -1, (0, 255, 0), 3)
-    image_with_big_contours = cv2.drawContours(image_with_big_contours, big_contours, -1, (0, 255, 0), 3)
-    image_with_union_contours = cv2.rectangle(image_with_union_contours, (union_contours[0], union_contours[1]), (union_contours[0] + union_contours[2], union_contours[1] + union_contours[3]), (0, 255, 0), 3)
-    cropped_image = _crop_by_contours(image, union_contours)
-    
-    import matplotlib.pyplot as plt
-    fig, axs = plt.subplots(2, 3, figsize=(18, 18))
-    axs[0, 0].imshow(image), axs[0, 0].set_title('Original Image')
-    axs[0, 1].imshow(image_with_contours), axs[0, 1].set_title('Image with Contours')
-    axs[0, 2].imshow(image_with_big_contours), axs[0, 2].set_title('Image with Big Contours')
-    axs[1, 0].imshow(image_with_union_contours), axs[1, 0].set_title('Image with Union Contours')
-    axs[1, 1].imshow(cropped_image), axs[1, 1].set_title('Cropped Image')
-    
-    for ax in axs.flat:
-        ax.axis('off')
-    plt.show()
+    @staticmethod
+    def _crop_image_using_contour(image: Image, contour: Contour) -> Image:
+        """
+        Create mask for the contour and crop the image to its boundaries.
+        
+        Args:
+            image: Input color image
+            contour: Contour to crop to
+            
+        Returns:
+            Cropped image
+        """
+        # Create mask
+        mask = np.zeros_like(image)
+        cv2.drawContours(mask, [contour], -1, (255, 255, 255), -1)
+        
+        # Apply mask
+        masked_image = cv2.bitwise_and(image, mask)
+        
+        # Get bounding rectangle
+        gray_masked = cv2.cvtColor(masked_image, cv2.COLOR_RGB2GRAY)
+        x, y, w, h = cv2.boundingRect(gray_masked)
+        
+        # Crop image to bounding rectangle
+        cropped_image = masked_image[y:y+h, x:x+w]
+        
+        return cropped_image
