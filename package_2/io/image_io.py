@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-def load_image_path(input_type: str, substance_name: str = None) -> list:
+def load_image_path(input_type: str) -> list:
     """
     Load image file paths from the specified directory.
 
@@ -17,8 +17,8 @@ def load_image_path(input_type: str, substance_name: str = None) -> list:
     """
     if input_type == "mixtures":
         input_dir = os.path.join(os.getcwd(), 'input', 'mixtures')
-    elif input_type == "ingredients" and substance_name:
-        input_dir = os.path.join(os.getcwd(), 'input', 'ingredients', substance_name)
+    elif input_type == "ingredients":
+        input_dir = os.path.join(os.getcwd(), 'input', 'ingredients')
     else:
         raise ValueError("Invalid input_type or missing substance_name for ingredients")
     return [os.path.join(input_dir, image_name) for image_name in os.listdir(input_dir)]
@@ -38,7 +38,7 @@ def read_image(image_path: str) -> np.ndarray:
         raise FileNotFoundError(f"Image not found at {image_path}")
     return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-def show_images(image_list: List[np.ndarray], name_list: List[str] = None) -> None:
+def display_images(image_list: List[np.ndarray], name_list: List[str] = None) -> None:
     """
     Display a list of images in a grid layout.
 
