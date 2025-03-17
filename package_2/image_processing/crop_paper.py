@@ -110,18 +110,41 @@ class PaperDetector:
         Returns:
             Cropped image
         """
-        # Create mask
         mask = np.zeros_like(image)
         cv2.drawContours(mask, [contour], -1, (255, 255, 255), -1)
-        
-        # Apply mask
         masked_image = cv2.bitwise_and(image, mask)
         
-        # Get bounding rectangle
         gray_masked = cv2.cvtColor(masked_image, cv2.COLOR_BGR2GRAY)
         x, y, w, h = cv2.boundingRect(gray_masked)
         
-        # Crop image to bounding rectangle
         cropped_image = masked_image[y:y+h, x:x+w]
-        
+        cropped_image = PaperDetector._fill_black_borders(cropped_image)
         return cropped_image
+    
+    @staticmethod
+    def _fill_black_borders(image: Image) -> Image:
+        """
+        Fill in black borders of an image with estimated background color.
+        
+        Args:
+            image: Input color image with black borders
+            
+        Returns:
+            Image with black borders filled in
+        """
+        result = image.copy()
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        black_mask = (gray == 0)
+        if not np.any(black_mask):
+            return result
+        
+        # Process each color channel separately
+        for channel in range(image.shape[2]):
+            channel_data = image[:, :, channel]
+            non_zero = channel_data[~black_mask]
+            if len(non_zero) > 0:
+                background_color = np.median(non_zero)
+                result[:, :, channel][black_mask] = background_color
+        
+        return result
