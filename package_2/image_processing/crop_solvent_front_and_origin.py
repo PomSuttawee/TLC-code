@@ -40,7 +40,7 @@ class TLCLineDetector:
         enhanced = clahe.apply(gray)
         lsd = cv2.createLineSegmentDetector(cv2.LSD_REFINE_ADV)
         lines, _, _, _ = lsd.detect(enhanced)
-        
+
         if lines is None:
             raise ValueError("No lines found in the image.")
             
