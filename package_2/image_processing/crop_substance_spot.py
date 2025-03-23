@@ -6,17 +6,17 @@ from photutils.background import Background2D, MeanBackground
 from scipy.signal import find_peaks
 
 
-def crop_substance_spot(image):
+def crop_substance_spot_ingredient(image: np.ndarray) -> np.ndarray:
     assert image is not None, "Image is None"
     
     image_remove_background = remove_background(image)
-    threshold_mask = create_threshold_mask(image_remove_background)
+    threshold_mask = create_threshold_mask(image_remove_background, mode='ingredient')
     assert np.sum(threshold_mask) > 0, "Threshold mask is empty"
     
     contours = detect_contours(threshold_mask)
     assert contours, "No contours found in the image"
     
-    bounding_boxes = filter_contours(contours, image.shape)
+    bounding_boxes = filter_contours(contours, image.shape, mode='ingredient')
     assert bounding_boxes, "No suitable contours found in the image"
     
     highest_concentration_bounding_boxes = get_highest_concentration_bounding_boxes(bounding_boxes)
@@ -34,9 +34,35 @@ def crop_substance_spot(image):
     segmented_image = apply_mask(image, final_mask)
     assert segmented_image is not None, "Segmented image is None"
     
-    visualize_segmented_image(image, image_remove_background, threshold_mask, bounding_boxes, highest_concentration_bounding_boxes, checked_overlapping_boxes, final_bounding_boxes, final_mask, segmented_image)
+    # visualize_segmented_image(image, image_remove_background, threshold_mask, bounding_boxes, highest_concentration_bounding_boxes, checked_overlapping_boxes, final_bounding_boxes, final_mask, segmented_image)
     return segmented_image, final_bounding_boxes
 
+def crop_substance_spot_mixture(image: np.ndarray) -> np.ndarray:
+    assert image is not None, "Image is None"
+    
+    image_remove_background = remove_background(image)
+    threshold_mask = create_threshold_mask(image_remove_background, 'mixture')
+    assert np.sum(threshold_mask) > 0, "Threshold mask is empty"
+    
+    contours = detect_contours(threshold_mask)
+    assert contours, "No contours found in the image"
+    
+    bounding_boxes = filter_contours(contours, image.shape)
+    assert bounding_boxes, "No suitable contours found in the image"
+    
+    checked_overlapping_boxes = check_overlap(image, bounding_boxes)
+    assert checked_overlapping_boxes, "No checked overlapping boxes found"
+    
+    sorted_boxes = sorted(checked_overlapping_boxes, key=lambda x: x[1])
+    
+    mask = create_mask_from_bounding_boxes(image.shape, sorted_boxes)
+    assert np.sum(mask) > 0, "Mask is empty"
+    
+    segmented_image = apply_mask(image, mask)
+    assert segmented_image is not None, "Segmented image is None"
+    
+    return segmented_image, sorted_boxes
+    
 def visualize_segmented_image(image: np.ndarray, image_remove_background: np.ndarray, threshold_mask: np.ndarray, all_boxes: list, highest_boxes: list, checked_boxes: list, final_boxes: list, final_mask: np.ndarray, segmented_image: np.ndarray) -> None:
     """
     Visualize the segmented image with detected bounding boxes.
@@ -101,7 +127,7 @@ def remove_background(image: np.ndarray) -> np.ndarray:
         )
     return l - bkg.background
 
-def create_threshold_mask(image: np.ndarray) -> np.ndarray:
+def create_threshold_mask(image: np.ndarray, mode: str = 'default') -> np.ndarray:
     """
     Create a binary threshold mask from the input image.
 
@@ -111,12 +137,22 @@ def create_threshold_mask(image: np.ndarray) -> np.ndarray:
     Returns:
         np.ndarray: Binary threshold mask.
     """
+    iterations = 5 if mode == "ingredient" else 3
     threshold = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
     kernel_size = max(5, min(image.shape[0] // 100, image.shape[1] // 100))
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
-    threshold = cv2.morphologyEx(threshold, cv2.MORPH_OPEN, kernel, iterations=5)
-    threshold = cv2.morphologyEx(threshold, cv2.MORPH_CLOSE, kernel, iterations=5)
+    threshold = cv2.morphologyEx(threshold, cv2.MORPH_OPEN, kernel, iterations=iterations)
+    if mode == "ingredient":
+        threshold = cv2.morphologyEx(threshold, cv2.MORPH_CLOSE, kernel, iterations=iterations)
     return threshold
+
+
+
+
+
+############################################################################################################
+# Contours Detection
+############################################################################################################
 
 def detect_contours(image: np.ndarray):
     """
@@ -135,7 +171,7 @@ def detect_contours(image: np.ndarray):
         )
     return contours
 
-def filter_contours(contours: list, image_shape: tuple) -> list:
+def filter_contours(contours: list, image_shape: tuple, mode: str = 'default') -> list:
     """
     Filter detected contours based on size and shape.
 
@@ -148,7 +184,8 @@ def filter_contours(contours: list, image_shape: tuple) -> list:
     """
     filtered_contours = _remove_small_contours(contours, image_shape)
     filtered_contours = _filter_non_border_contours(filtered_contours, image_shape)
-    filtered_contours = _remove_right_most_vertical_lane(filtered_contours)
+    if mode == 'ingredient':
+        filtered_contours = _remove_right_most_vertical_lane(filtered_contours)
     return filtered_contours
 
 def _remove_small_contours(contours: list, image_shape: tuple) -> list:
@@ -179,7 +216,7 @@ def _filter_non_border_contours(contours: list, image_shape: tuple) -> list:
     bounding_boxes = [cv2.boundingRect(contour) for contour in contours]
     
     x_border_threshold = image_shape[1] * 0.025
-    y_border_threshold = image_shape[0] * 0.05
+    y_border_threshold = image_shape[0] * 0.025
     x_border = (x_border_threshold, image_shape[1] - x_border_threshold)
     y_border = y_border_threshold
 
@@ -222,6 +259,14 @@ def _intersect(box: tuple, remove_range: tuple) -> bool:
     """
     x, y, w, h = box
     return x < remove_range[1] and x + w > remove_range[0]
+
+
+
+
+
+############################################################################################################
+# Bounding Boxes Processing
+############################################################################################################
 
 def get_highest_concentration_bounding_boxes(bounding_boxes: list) -> list:
     """
@@ -311,9 +356,12 @@ def create_bounding_boxes_from_checked_boxes(bounding_boxes: list, checked_boxes
     final_boxes = []
     y_coordinates = _get_y_coordinates(checked_boxes)
     x_coordinates = _get_x_coordinates(bounding_boxes)
+    
     for y_start, y_end in y_coordinates:
+        horizontal_boxes = []
         for x_start, x_end in x_coordinates:
-            final_boxes.append((x_start, y_start, x_end - x_start, y_end - y_start))
+            horizontal_boxes.append((x_start, y_start, x_end - x_start, y_end - y_start))
+        final_boxes.append(horizontal_boxes)
     return final_boxes
 
 def _get_y_coordinates(boxes: list) -> list:
@@ -326,7 +374,8 @@ def _get_y_coordinates(boxes: list) -> list:
     Returns:
         list: List of y-coordinates.
     """
-    return [(box[1], box[1] + box[3]) for box in boxes]
+    y_coordinates = [(box[1], box[1] + box[3]) for box in boxes]
+    return sorted(y_coordinates, key=lambda x: x[0])
 
 def _get_x_coordinates(boxes: list) -> list:
     """
@@ -340,7 +389,7 @@ def _get_x_coordinates(boxes: list) -> list:
     """
     x_coordinates = [(box[0], box[0] + box[2]) for box in boxes]
     x_coordinates = _merge_intersect_x_coordinates(x_coordinates)
-    return x_coordinates
+    return sorted(x_coordinates, key=lambda x: x[0])
 
 def _merge_intersect_x_coordinates(x_coordinates: list) -> list:
     """
@@ -365,6 +414,8 @@ def _merge_intersect_x_coordinates(x_coordinates: list) -> list:
                 merged_coordinates[-1] = [min(x_start, last_start), max(x_end, last_end)]
     return merged_coordinates
 
+
+
 def create_mask_from_bounding_boxes(image_shape: tuple, bounding_boxes: list) -> np.ndarray:
     """
     Create a binary mask from the input bounding boxes.
@@ -377,16 +428,30 @@ def create_mask_from_bounding_boxes(image_shape: tuple, bounding_boxes: list) ->
         np.ndarray: Binary mask.
     """
     mask = np.zeros(image_shape[:2], dtype=np.uint8)
-    for box in bounding_boxes:
-        x, y, w, h = box
-        mask = cv2.ellipse(img = mask,
-                            center = (x + w // 2, y + h // 2),
-                            axes = (w // 2, h // 2),
-                            angle = 0,
-                            startAngle = 0,
-                            endAngle = 360,
-                            color = 255,
-                            thickness = -1)
+    
+    if isinstance(bounding_boxes[0], list):
+        for boxes in bounding_boxes:
+            for box in boxes:
+                x, y, w, h = box
+                mask = cv2.ellipse(img = mask,
+                                    center = (x + w // 2, y + h // 2),
+                                    axes = (w // 2, h // 2),
+                                    angle = 0,
+                                    startAngle = 0,
+                                    endAngle = 360,
+                                    color = 255,
+                                    thickness = -1)
+    else:
+        for box in bounding_boxes:
+            x, y, w, h = box
+            mask = cv2.ellipse(img = mask,
+                                center = (x + w // 2, y + h // 2),
+                                axes = (w // 2, h // 2),
+                                angle = 0,
+                                startAngle = 0,
+                                endAngle = 360,
+                                color = 255,
+                                thickness = -1)
     return mask
 
 def apply_mask(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
