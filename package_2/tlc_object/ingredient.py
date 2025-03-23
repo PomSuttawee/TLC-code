@@ -3,7 +3,7 @@ import cv2
 
 from package_2.image_processing.crop_paper import PaperDetector
 from package_2.image_processing.crop_solvent_front_and_origin import TLCImageProcessor
-from package_2.image_processing.crop_substance_spot import crop_substance_spot
+from package_2.image_processing.crop_substance_spot import crop_substance_spot_ingredient
 from package_2.data_extractor.ingredient_data_extractor import extract_data
 
 class Substance:
@@ -67,7 +67,7 @@ class Ingredient:
         return TLCImageProcessor.crop_solvent_front_and_origin(PaperDetector.crop_to_paper(self.image))
     
     def _segment_image(self):
-        return crop_substance_spot(self.paper_image)
+        return crop_substance_spot_ingredient(self.paper_image)
     
     def _convert_to_gray(self, image: np.ndarray) -> np.ndarray:
         return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
