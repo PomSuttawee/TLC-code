@@ -1,34 +1,41 @@
 import numpy as np
 import cv2
 
-from package_2.image_processing.detect_paper import PaperDetector
-from package_2.image_processing.detect_solvent_front_and_origin import TLCImageProcessor
-from package_2.image_processing.segment_substance_spot import segment_hsv_threshold_range
+from package_2.image_processing.crop_paper import PaperDetector
+from package_2.image_processing.crop_solvent_front_and_origin import TLCImageProcessor
+from package_2.image_processing.crop_substance_spot import crop_substance_spot
 from package_2.data_extractor.ingredient_data_extractor import extract_data
 
 class Substance:
-    def __init__(self, substance_index: int, image: np.ndarray, rf: float, slope: float, intercept: float, r_squared: float):
-        self.substance_index = substance_index
-        self.image = image
+    def __init__(self, substance_name: str, rf: float, slope: float, intercept: float, r_squared: float):
+        self.substance_name = substance_name
         self.rf = rf
-        self.calibration_curve = (slope, intercept)
+        self.slope = slope
+        self.intercept = intercept
         self.r_squared = r_squared
+        print(f"Substance {self.substance_name} created.")
+        print(f'Rf: {self.rf}, Slope: {self.slope}, Intercept: {self.intercept}, R-squared: {self.r_squared}\n')
 
 class IngredientSingleChannel:
-    def __init__(self, name: str, image: np.ndarray, concentration_list: list):
+    def __init__(self, name: str, image: np.ndarray, bounding_boxes: list, concentration_list: list):
         self.name = name
         self.image = image
+        self.bounding_boxes = bounding_boxes
         self.concentration_list = concentration_list
         self.substances = self._create_substances()
     
     def _extract_data(self):
-        return extract_data(self.image, self.concentration_list)
+        return extract_data(self.image, self.bounding_boxes, self.concentration_list)
        
     def _create_substances(self):
         substance_data = self._extract_data()
         substances = {}
-        for index, data in substance_data.items():
-            substances[index] = Substance(index, data['image'], data['rf'], data['calibration_curve'][0], data['calibration_curve'][1], data['r_squared'])
+        for name, data in substance_data.items():
+            substances[name] = Substance(substance_name = name,
+                                         rf             = data['rf'],
+                                         slope          = data['calibration_curve'][0],
+                                         intercept      = data['calibration_curve'][1],
+                                         r_squared      = data['calibration_curve'][2])
         return substances
     
 class Ingredient:
@@ -37,18 +44,30 @@ class Ingredient:
         self.image = image
         self.concentration_list = concentration_list
         self.paper_image = self._process_image()
-        self.segmented_image = self._segment_image()
+        self.segmented_image, self.bounding_boxes = self._segment_image()
         
-        # self.gray_ingredient = IngredientSingleChannel(self.name + "_gray", self._convert_to_gray(self.segmented_image), self.concentration_list)
+        # import os
+        # path_paper = 'C:\\Users\\Suttawee\\Desktop\\TLC-code\\OUTPUT\\paper_image'
+        # path_segment = 'C:\\Users\\Suttawee\\Desktop\\TLC-code\\OUTPUT\\segment_image'
+        # cv2.imwrite(os.path.join(path_paper, f'{self.name[:-4]}_input.png'), self.paper_image)
+        # cv2.imwrite(os.path.join(path_segment, f'{self.name[:-4]}_mask_algo.png'), self.segmented_image)
+        
+        self.gray_ingredient = IngredientSingleChannel(self.name + "_gray", self._convert_to_gray(self.segmented_image), self.bounding_boxes, self.concentration_list)
     
     def get_images(self):
-        return [self.image, self.paper_image, self.segmented_image]
+        segmented_image_with_boxes = self.segmented_image.copy()
+        for i, horizontal_boxes in enumerate(self.bounding_boxes):
+            for j, box in enumerate(horizontal_boxes):
+                x, y, w, h = box
+                cv2.rectangle(segmented_image_with_boxes, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                cv2.putText(segmented_image_with_boxes, f"H{i+1}-V{j+1}", (x + 5, y + h//2), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
+        return [self.image, self.paper_image, self.segmented_image, segmented_image_with_boxes]
     
     def _process_image(self):
         return TLCImageProcessor.crop_solvent_front_and_origin(PaperDetector.crop_to_paper(self.image))
     
     def _segment_image(self):
-        return segment_hsv_threshold_range(self.paper_image)
-
+        return crop_substance_spot(self.paper_image)
+    
     def _convert_to_gray(self, image: np.ndarray) -> np.ndarray:
         return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
