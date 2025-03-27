@@ -7,14 +7,12 @@ from package.image_processing.crop_substance_spot import crop_substance_spot_ing
 from package.data_extractor.ingredient_data_extractor import extract_data
 
 class Substance:
-    def __init__(self, substance_name: str, rf: float, slope: float, intercept: float, r_squared: float):
-        self.substance_name = substance_name
+    def __init__(self, name: str, rf: float, slope: float, intercept: float, r_squared: float):
+        self.name = name
         self.rf = rf
         self.slope = slope
         self.intercept = intercept
         self.r_squared = r_squared
-        print(f"Substance {self.substance_name} created.")
-        print(f'Rf: {self.rf}, Slope: {self.slope}, Intercept: {self.intercept}, R-squared: {self.r_squared}\n')
 
 class IngredientSingleChannel:
     def __init__(self, name: str, image: np.ndarray, bounding_boxes: list, concentration_list: list):
@@ -31,11 +29,11 @@ class IngredientSingleChannel:
         substance_data = self._extract_data()
         substances = {}
         for name, data in substance_data.items():
-            substances[name] = Substance(substance_name = name,
-                                         rf             = data['rf'],
-                                         slope          = data['calibration_curve'][0],
-                                         intercept      = data['calibration_curve'][1],
-                                         r_squared      = data['calibration_curve'][2])
+            substances[name] = Substance(name      = name,
+                                         rf        = data['rf'],
+                                         slope     = data['calibration_curve'][0],
+                                         intercept = data['calibration_curve'][1],
+                                         r_squared = data['calibration_curve'][2])
         return substances
     
 class Ingredient:
@@ -52,8 +50,11 @@ class Ingredient:
         # cv2.imwrite(os.path.join(path_paper, f'{self.name[:-4]}_input.png'), self.paper_image)
         # cv2.imwrite(os.path.join(path_segment, f'{self.name[:-4]}_mask_algo.png'), self.segmented_image)
         
-        self.gray_ingredient = IngredientSingleChannel(self.name + "_gray", self._convert_to_gray(self.segmented_image), self.bounding_boxes, self.concentration_list)
-    
+        self.single_channel_ingredient = IngredientSingleChannel(name = self.name + "_gray", 
+                                                                 image = self._convert_to_gray(self.segmented_image),
+                                                                 bounding_boxes = self.bounding_boxes,
+                                                                 concentration_list = self.concentration_list)
+
     def get_images(self):
         segmented_image_with_boxes = self.segmented_image.copy()
         for i, horizontal_boxes in enumerate(self.bounding_boxes):

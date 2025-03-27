@@ -7,12 +7,10 @@ from package.image_processing.crop_substance_spot import crop_substance_spot_mix
 from package.data_extractor.mixture_data_extractor import extract_data
 
 class Substance():
-    def __init__(self, substance_name: str, rf: float, peak_area: float):
-        self.substance_name = substance_name
+    def __init__(self, name: str, rf: float, peak_area: float):
+        self.name = name
         self.rf = rf
         self.peak_area = peak_area
-        print(f"Substance {self.substance_name} created.")
-        print(f'Rf: {self.rf}, Peak Area: {self.peak_area}\n')
 
 class MixtureSingleChannel():
     def __init__(self, name: str, image: np.ndarray, bounding_boxes: list):
@@ -44,7 +42,10 @@ class Mixture():
         # cv2.imwrite(os.path.join(path_paper, f'{self.name[:-4]}_input.png'), self.paper_image)
         # cv2.imwrite(os.path.join(path_segment, f'{self.name[:-4]}_mask_algo.png'), self.segmented_image)
         
-        self.gray_mixture = MixtureSingleChannel(self.name + "_gray", self._convert_to_gray(self.segmented_image), self.bounding_boxes)
+        
+        self.single_channel_mixture = MixtureSingleChannel(name = self.name + "_gray",
+                                                           image = self._convert_to_gray(self.segmented_image),
+                                                           bounding_boxes = self.bounding_boxes)
         
     def get_images(self):
         return [self.image, self.paper_image, self.segmented_image]
