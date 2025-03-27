@@ -137,13 +137,17 @@ class TLCAnalyzer:
     def _align_data(self) -> None:
         # Use mixture rf as a reference
         mixture_rf = {substance_name: substance['rf'] for substance_name, substance in self.mixture_data.items()}
+        sorted_mixture_rf = sorted(mixture_rf.items(), key=lambda x: x[1])
+        mixture_rf = {name: rf for name, rf in sorted_mixture_rf}
         ingredient = self.ingredient_data
         # Align ingredient data to mixture data
         aligned_ingredient_data = {}
         
         for ing_name, ing_substances in ingredient.items():
+            sorted_ing_substances = sorted(ing_substances.items(), key=lambda x: x[1]['rf'])
+            sorted_ing_substances = {name: data for name, data in sorted_ing_substances}
             new_substances = {}
-            for sub_name, sub_data in ing_substances.items():
+            for sub_name, sub_data in sorted_ing_substances.items():
                 sub_rf, sub_slope, sub_intercept, sub_r2 = sub_data['rf'], sub_data['slope'], sub_data['intercept'], sub_data['r_squared']
                 best_match_name = None
                 best_diff = float('inf')
