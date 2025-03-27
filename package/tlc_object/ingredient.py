@@ -56,13 +56,17 @@ class Ingredient:
                                                                  concentration_list = self.concentration_list)
 
     def get_images(self):
+        
+        return [self.image, self.paper_image, self.segmented_image, self.get_label_image()]
+    
+    def get_label_image(self):
         segmented_image_with_boxes = self.segmented_image.copy()
         for i, horizontal_boxes in enumerate(self.bounding_boxes):
             for j, box in enumerate(horizontal_boxes):
                 x, y, w, h = box
                 cv2.rectangle(segmented_image_with_boxes, (x, y), (x + w, y + h), (0, 255, 0), 2)
                 cv2.putText(segmented_image_with_boxes, f"H{i+1}-V{j+1}", (x + 5, y + h//2), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
-        return [self.image, self.paper_image, self.segmented_image, segmented_image_with_boxes]
+        return segmented_image_with_boxes
     
     def _process_image(self):
         return TLCImageProcessor.crop_solvent_front_and_origin(PaperDetector.crop_to_paper(self.image))
