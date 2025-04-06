@@ -54,7 +54,7 @@ def crop_substance_spot_mixture(image: np.ndarray) -> np.ndarray:
     checked_overlapping_boxes = check_overlap(image, bounding_boxes)
     assert checked_overlapping_boxes, "No checked overlapping boxes found"
     
-    sorted_boxes = sorted(checked_overlapping_boxes, key=lambda x: x[1])
+    sorted_boxes = sorted(checked_overlapping_boxes, key=lambda x: x[1], reverse=True)
     
     mask = create_mask_from_bounding_boxes(image.shape, sorted_boxes)
     assert np.sum(mask) > 0, "Mask is empty"
@@ -375,7 +375,7 @@ def _get_y_coordinates(boxes: list) -> list:
         list: List of y-coordinates.
     """
     y_coordinates = [(box[1], box[1] + box[3]) for box in boxes]
-    return sorted(y_coordinates, key=lambda x: x[0])
+    return sorted(y_coordinates, key=lambda x: x[0], reverse=True)
 
 def _get_x_coordinates(boxes: list) -> list:
     """
