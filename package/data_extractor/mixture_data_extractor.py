@@ -29,7 +29,7 @@ def calculate_peak_area(image: np.ndarray, bounding_boxes: list) -> list:
         sum_value = np.sum(spot_image, axis=0)
         count_color_pixel = np.sum(np.where(spot_image > 0, 1, 0), axis=0)
         safe_count_color_pixel = np.where(count_color_pixel == 0, 1, count_color_pixel)
-        average_value = (255 - (sum_value / safe_count_color_pixel)).astype(int)
+        average_value = (sum_value / safe_count_color_pixel).astype(int)
         average_value[count_color_pixel == 0] = 0
         
         peak_area = np.trapz(average_value)
