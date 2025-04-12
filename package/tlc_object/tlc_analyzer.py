@@ -19,20 +19,24 @@ class TLCAnalyzer:
         
     def print_result(self):
         # Print Equations
-        print("EQUATIONS".center(80))
-        print("-" * 80)
-        for mixture_substance_name, equation_data in self.equations.items():
-            equation = equation_data['equation']
-            r_squared = equation_data['R_squared']
-            print(f"{mixture_substance_name}: {equation} (R²: {r_squared:.4f})")
-        print("-" * 80)
-        print("\n")
+        # print("EQUATIONS".center(80))
+        # print("-" * 80)
+        # for mixture_substance_name, equation_data in self.equations.items():
+        #     equation = equation_data['equation']
+        #     r_squared = equation_data['R_squared']
+        #     print(f"{mixture_substance_name}: {equation} (R²: {r_squared:.4f})")
+        # print("-" * 80)
+        # print("\n")
         
         # Print Estimated Concentration
+        if len(self.estimated_concentration) == 0:
+            logger.warning("No estimated concentration found")
+            return
         print("ESTIMATED CONCENTRATION".center(80))
         print("-" * 80)
         for ingredient_name, concentration in self.estimated_concentration.items():
-            print(f"{ingredient_name}: {concentration}")
+            if ingredient_name.endswith("_ratio"):
+                print(f"{ingredient_name}: {concentration}")
         print("-" * 80)
         print("\n")
     
@@ -201,8 +205,7 @@ class TLCAnalyzer:
         # Setup variable
         variables = {}
         for ingredient_name, ingredient_substance in self.aligned_ingredient_data.items():
-            variables[ingredient_name] = sp.symbols(f"{ingredient_name[:6]}_concentration")
-        
+            variables[ingredient_name] = sp.symbols(f"{ingredient_name[:6]}", positive=True)
         
         equations = {}
         for mixture_substance_name, mixture_substance_data in self.mixture_data.items():
@@ -232,10 +235,21 @@ class TLCAnalyzer:
         
         # Select equations with highest R² value
         equations = sorted(self.equations.items(), key=lambda x: x[1]['R_squared'], reverse=True)
+        # print("Equations sorted by R² value:")
+        # print("-" * 80)
+        # for eq in equations:
+        #     print(f'{eq[0]}: {eq[1]["equation"]} (R²: {eq[1]["R_squared"]:.4f})')
+        # print("-" * 80)
+        
         selected_equations = equations[:len(self.ingredient_object_list)]
-        # print(f"Selected equations: {selected_equations}")
+        # print("\nSelected equations:")
+        # print("-" * 80)
+        # for eq in selected_equations:
+        #     print(f'{eq[0]}: {eq[1]["equation"]} (R²: {eq[1]["R_squared"]:.4f})')
+        # print("-" * 80)
+        
         selected_equations = [eq[1]['equation'] for eq in selected_equations]
-        # print(f"Selected equations 2: {selected_equations}")
+        
         # Solve the equations
         solutions = sp.solve(selected_equations, dict=True)
         
@@ -246,7 +260,9 @@ class TLCAnalyzer:
         
         # Use first solution (typically there's just one)
         solution = solutions[0]
-        
+        if len(solutions) > 1:
+            logger.info("Multiple solutions found, using the first one")
+            
         # Extract the concentration values
         concentration_values = {}
         for symbol, value in solution.items():
