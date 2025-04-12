@@ -35,7 +35,7 @@ def crop_substance_spot_ingredient(image: np.ndarray) -> np.ndarray:
     assert segmented_image is not None, "Segmented image is None"
 
     
-    visualize_segmented_image(image, image_remove_background, threshold_mask, bounding_boxes, highest_concentration_bounding_boxes, checked_overlapping_boxes, final_bounding_boxes, final_mask, segmented_image)
+    # visualize_segmented_image(image, image_remove_background, threshold_mask, bounding_boxes, highest_concentration_bounding_boxes, checked_overlapping_boxes, final_bounding_boxes, final_mask, segmented_image)
     return segmented_image, final_bounding_boxes
 
 def crop_substance_spot_mixture(image: np.ndarray) -> np.ndarray:
