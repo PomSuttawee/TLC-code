@@ -1,324 +1,91 @@
-import logging
-from package.image_processing.general import io
-from typing import List
 import numpy as np
-from package.image_processing.general import crop
-from package.image_processing.segmentation import threshold
-from package.image_processing.data_extractor import rf, calibration
+import pandas as pd
+import cv2
 
-def validate_image(image: np.ndarray, name: str):
-    if not isinstance(image, np.ndarray):
-        raise ValueError(f"{name} must be a numpy array")
-    if image.size == 0:
-        raise ValueError(f"{name} cannot be empty")
+from package.image_processing.crop_paper import PaperDetector
+from package.image_processing.crop_solvent_front_and_origin import TLCImageProcessor, TLCVisualizer
+from package.image_processing.crop_substance_spot import crop_substance_spot_ingredient
+from package.data_extractor.ingredient_data_extractor import extract_data
 
-def validate_concentration(concentration: List[float]):
-    if len(concentration) == 0:
-        raise ValueError("concentration list cannot be empty")
-
-class Lane:
-    """Base class for lane objects within an ingredient image."""
-    
-    def __init__(self, lane_name: str, lane_image: np.ndarray):
-        validate_image(lane_image, "lane_image")
-        self.lane_name = lane_name
-        self.lane_image = lane_image
-    
-    def __str__(self) -> str:
-        """Base string representation of a lane."""
-        return f"""
-        Lane name: {self.lane_name}
-        Lane image shape: {self.lane_image.shape}
-        """
-
-class VerticalLane(Lane):
-    """
-    Represents a vertical lane within an ingredient image.
-
-    Attributes:
-        lane_name (str): Identifies the lane.
-        lane_image (np.ndarray): Image array of the vertical lane.
-        rf (List[float]): RF values calculated from the lane in ascending order.
-    """
-    def __init__(self, lane_name: str, lane_image: np.ndarray):
-        """
-        Initializes the VerticalLane object and computes the RF values.
-
-        Args:
-            lane_name (str): Name of the lane.
-            lane_image (np.ndarray): Image array of the vertical slice.
-        """
-        super().__init__(lane_name, lane_image)
-        self.rf = rf.calculate_rf_detect_centroid(lane_image)
-    
-    def get_image_with_centroids(self) -> np.ndarray:
-        """
-        Returns the lane image with RF values annotated.
-
-        Returns:
-            np.ndarray: Image array with RF values annotated.
-        """
-        return rf.get_image_with_centroids(self.lane_image)
-    
-    def __str__(self) -> str:
-        """
-        Returns a string representation of the lane, including shape and RF values.
-        """
-        return f"""
-        Lane name: {self.lane_name}
-        Lane image shape: {self.lane_image.shape}
-        RF values: {self.rf}
-        """
-
-class HorizontalLane(Lane):
-    """
-    Represents a horizontal lane within an ingredient image.
-
-    Attributes:
-        lane_name (str): Identifies the lane.
-        lane_image (np.ndarray): Image array of the horizontal lane.
-        best_fit_line (List[float]): Coefficients describing the best-fit calibration line.
-        r_squared (float): R² score indicating the fit quality.
-    """
-    def __init__(self, lane_name: str, lane_image: np.ndarray, concentration: List[float]):
-        """
-        Initializes the HorizontalLane object and calculates the best-fit line.
-
-        Args:
-            lane_name (str): Name of the lane.
-            lane_image (np.ndarray): Image array of the horizontal slice.
-            concentration (List[float]): List of concentration values for calibration.
-        """
-        super().__init__(lane_name, lane_image)
-        validate_concentration(concentration)
-        self.best_fit_line, self.r_squared = calibration.calculate_best_fit_line_for_image(lane_image, concentration)
-
-    def __str__(self) -> str:
-        """
-        Returns a string representation of the lane, including shape and model fit stats.
-        """
-        return f"""
-        Lane name: {self.lane_name}
-        Lane image shape: {self.lane_image.shape}
-        Best fit line: {self.best_fit_line}
-        r_squared: {self.r_squared}
-        """
-        
 class Substance:
-    def __init__(self, substance_index: int, vertical_lane: VerticalLane, horizontal_lane: HorizontalLane):
-        self.substance_index = substance_index
-        self.slope = horizontal_lane.best_fit_line[0]
-        self.intercept = horizontal_lane.best_fit_line[1]
-        self.r_squared = horizontal_lane.r_squared
-        self.rf = vertical_lane.rf[substance_index]
-
-class IngredientSingleColor:
-    """
-    Processes a single color channel of an ingredient image.
-
-    Attributes:
-        name (str): Name of the ingredient color.
-        single_color_image (np.ndarray): Single color channel image data.
-        concentration (List[float]): List of concentration values for calibration.
-        segmented_image (np.ndarray): Binary or refined mask of the lane structures.
-        vertical_lane_images (List[np.ndarray]): List of vertical lane images.
-        vertical_lanes (List[VerticalLane]): List of vertical lane objects.
-        horizontal_lane_images (List[np.ndarray]): List of horizontal lane images.
-        horizontal_lanes (List[HorizontalLane]): List of horizontal lane objects.
-    """
-    def __init__(self, name: str, single_color_image: np.ndarray, concentration: List[float]):
-        """
-        Initializes the IngredientSingleColor class by segmenting the image and extracting lanes.
-
-        Args:
-            name (str): Unique identifier for the color channel.
-            single_color_image (np.ndarray): Single-channel image data.
-            concentration (List[float]): List of concentration values for calibration.
-        """
-        log = logging.getLogger('ingredient-color')
-        log.info(f'Initializing color channel: {name}')
-        
-        # Validate inputs
-        validate_image(single_color_image, "single_color_image")
-        validate_concentration(concentration)
-        
-        # Store basic attributes
+    def __init__(self, name: str, rf: float, slope: float, intercept: float, r_squared: float):
         self.name = name
-        self.single_color_image = single_color_image
-        self.concentration = concentration
-        
-        try:
-            # Process the image in stages
-            self._segment_image()
-            self._process_vertical_lanes()
-            self._process_horizontal_lanes()
-            self._process_substances()
-                       
-        except Exception as e:
-            log.error(f"Failed to process color channel {name}: {str(e)}")
-            raise ValueError(f"Color channel processing failed: {str(e)}") from e
-        
-    def _segment_image(self):
-        """Segments the image to identify lane structures."""
-        log = logging.getLogger('ingredient-color')
-        log.debug(f'Segmenting image')
-        
-        self.segmented_image = threshold.segment_ingredient(self.single_color_image)
-        if self.segmented_image is None:
-            raise ValueError("Segmentation failed, resulting in None")
+        self.rf = rf
+        self.slope = slope
+        self.intercept = intercept
+        self.r_squared = r_squared
 
-    def _process_vertical_lanes(self):
-        """Extracts and processes vertical lanes from the segmented image."""
-        log = logging.getLogger('ingredient-color')
-        
-        log.debug(f'Cropping vertical lanes')
-        self.vertical_lane_images = threshold.crop_vertically(self.segmented_image)
-        if not self.vertical_lane_images:
-            raise ValueError("No vertical lanes found")
-                
-        log.debug(f'Creating VerticalLane objects')
-        self.vertical_lanes = [
-            VerticalLane(f'V{i}', lane) 
-            for i, lane in enumerate(self.vertical_lane_images)
-        ]
-
-    def _process_horizontal_lanes(self):
-        """Extracts and processes horizontal lanes from the segmented image."""
-        log = logging.getLogger('ingredient-color')
-        log.debug(f'Cropping horizontal lanes')
-                
-        self.horizontal_lane_images = threshold.crop_horizontally(self.segmented_image)
-        if not self.horizontal_lane_images:
-            raise ValueError("No horizontal lanes found")
-        
-        log.debug(f'Creating HorizontalLane objects')
-        self.horizontal_lanes = [
-            HorizontalLane(f'H{i}', lane, self.concentration) 
-            for i, lane in enumerate(self.horizontal_lane_images)
-        ]
+class IngredientSingleChannel:
+    def __init__(self, name: str, image: np.ndarray, bounding_boxes: list, concentration_list: list):
+        self.name = name
+        self.image = image
+        self.bounding_boxes = bounding_boxes
+        self.concentration_list = concentration_list
+        self.substances = self._create_substances()
     
-    def _process_substances(self):
-        """Extracts and processes peaks from the vertical and horizontal lanes."""
-        log = logging.getLogger('ingredient-color')
-        log.debug(f'Creating Peak objects')
-        
-        self.substances = []
-        for i, horizontal_lane in enumerate(self.horizontal_lanes):
-            self.substances.append(Substance(i, self.vertical_lanes[-2], horizontal_lane))
+    def _extract_data(self):
+        return extract_data(self.image, self.bounding_boxes, self.concentration_list)
+       
+    def _create_substances(self):
+        substance_data = self._extract_data()
+        substances = {}
+        for name, data in substance_data.items():
+            substances[name] = Substance(name      = name,
+                                         rf        = data['rf'],
+                                         slope     = data['calibration_curve'][0],
+                                         intercept = data['calibration_curve'][1],
+                                         r_squared = data['calibration_curve'][2])
+        return substances
     
-    def __str__(self) -> str:
-        """
-        Returns a string representation of the color processing status and lane counts.
-        """
-        return f"""
-        Ingredient name: {self.name}
-        Single color image shape: {self.single_color_image.shape}
-        Segmented image shape: {self.segmented_image.shape}
-        Number of vertical lanes: {len(self.vertical_lanes)}
-        Number of horizontal lanes: {len(self.horizontal_lanes)}
-        """
-
 class Ingredient:
-    """
-    Stores and processes an ingredient's image in multiple color channels.
-
-    Attributes:
-        name (str): Name of the ingredient.
-        original_image (np.ndarray): Original image data.
-        concentration (List[float]): List of concentration values for calibration.
-        cropped_image (np.ndarray): Image cropped to its largest contour.
-        line_detected_image (np.ndarray): Image with detected lines used for channel separation.
-        red_channel_ingredient (IngredientSingleColor): IngredientSingleColor for the red channel.
-        green_channel_ingredient (IngredientSingleColor): IngredientSingleColor for the green channel.
-        blue_channel_ingredient (IngredientSingleColor): IngredientSingleColor for the blue channel.
-    """
-    def __init__(self, name: str, image: np.ndarray, concentration: List[float]):
-        """
-        Initializes the Ingredient by cropping and detecting lines, then splits it by color channels.
-
-        Args:
-            name (str): Name of the ingredient.
-            image (np.ndarray): Original ingredient image to be processed.
-            concentration (List[float]): List of concentration values for calibration.
-        """
-        log = logging.getLogger('ingredient')
-        log.info(f'Initiate Ingredient: {name}')
-        validate_image(image, "image")
-        validate_concentration(concentration)
-        
+    def __init__(self, name: str, image: np.ndarray, concentration_list: list):
         self.name = name
-        self.original_image = image
-        self.concentration = concentration
+        self.image = image
+        self.concentration_list = concentration_list
+        self.paper_image = self._process_image()
+        self.segmented_image, self.bounding_boxes = self._segment_image()
         
-        try:
-            # Preprocess the image (cropping and line detection)
-            self._preprocess_image()
-            
-            # Process individual color channels
-            self._process_color_channels()
-            
-        except Exception as e:
-            log.error(f"Failed to process ingredient {name}: {str(e)}")
-            raise ValueError(f"Ingredient processing failed: {str(e)}") from e
-    
-    def _preprocess_image(self):
-        """Handles image preprocessing steps: cropping and line detection."""
-        log = logging.getLogger('ingredient')
         
-        # Step 1: Crop image to largest contour
-        log.debug(f'Cropping image to largest contour')
-        self.cropped_image = crop.crop_to_largest_contour(self.original_image)
-        if self.cropped_image is None:
-            raise ValueError("Failed to crop image to largest contour")
+        # import os
+        # path_paper = 'C:\\Users\\Suttawee\\Desktop\\TLC-code\\OUTPUT\\paper_image'
+        # path_segment = 'C:\\Users\\Suttawee\\Desktop\\TLC-code\\OUTPUT\\segment_image'
+        # cv2.imwrite(os.path.join(path_paper, f'{self.name[:-4]}_input.png'), self.paper_image)
+        # cv2.imwrite(os.path.join(path_segment, f'{self.name[:-4]}_mask_algo.png'), self.segmented_image)
         
-        # Step 2: Detect and crop lines
-        log.debug(f'Detecting lines in cropped image')
-        self.line_detected_image = crop.detect_and_crop_houghlines(self.cropped_image)
-        if self.line_detected_image is None:
-            raise ValueError("Failed to detect lines in the image")
-    
-    def _process_color_channels(self):
-        """Creates IngredientSingleColor objects for each RGB channel."""
-        log = logging.getLogger('ingredient')
+        inv_gray_image = self._convert_to_gray(self.segmented_image, inverse = True)
+        inv_gray_image[inv_gray_image == 255] = 0
         
-        # Process red channel
-        log.debug(f'Initiate IngredientSingleColor: Red channel')
-        self.red_channel_ingredient = IngredientSingleColor(
-            f"{self.name}_red", 
-            self.line_detected_image[:, :, 0], 
-            self.concentration
-        )
-        
-        # Process green channel
-        log.debug(f'Initiate IngredientSingleColor: Green channel')
-        self.green_channel_ingredient = IngredientSingleColor(
-            f"{self.name}_green", 
-            self.line_detected_image[:, :, 1], 
-            self.concentration
-        )
-        
-        # Process blue channel
-        log.debug(f'Initiate IngredientSingleColor: Blue channel')
-        self.blue_channel_ingredient = IngredientSingleColor(
-            f"{self.name}_blue", 
-            self.line_detected_image[:, :, 2], 
-            self.concentration
-        )
+        self.single_channel_ingredient = IngredientSingleChannel(name = self.name + "_gray", 
+                                                                 image = inv_gray_image,
+                                                                 bounding_boxes = self.bounding_boxes,
+                                                                 concentration_list = self.concentration_list)
 
-    def print_all_substances(self):
-        for color in ['red', 'green', 'blue']:
-            print(f'\n{color.upper()}')
-            for substance in getattr(self, f'{color}_channel_ingredient').substances:
-                print(f'Substance {substance.substance_index + 1}: RF {substance.rf}, Slope {substance.slope}, Intercept {substance.intercept}')
-
-    def __str__(self) -> str:
-        """
-        Returns a string representation of the ingredient overview, including shapes of processed images.
-        """
-        return f"""
-        Image name: {self.name}
-        Original image shape: {self.original_image.shape}
-        Red channel processed image shape: {self.red_channel_ingredient.segmented_image.shape}
-        Green channel processed image shape: {self.green_channel_ingredient.segmented_image.shape}
-        Blue channel processed image shape: {self.blue_channel_ingredient.segmented_image.shape}
-        """
+    def print_substance(self):
+        data_df = pd.DataFrame(columns = ['Name', 'Rf', 'Slope', 'Intercept', 'R_squared'])
+        for name, substance in self.single_channel_ingredient.substances.items():
+            data_df = pd.concat([data_df, pd.DataFrame([[name, substance.rf, substance.slope, substance.intercept, substance.r_squared]], columns = data_df.columns)], ignore_index=True)
+        data_df = data_df.set_index('Name')
+        print(data_df)
+    
+    def get_images(self):
+        return [self.image, self.paper_image, self.segmented_image, self.get_label_image()]
+    
+    def get_label_image(self):
+        segmented_image_with_boxes = self.segmented_image.copy()
+        for i, horizontal_boxes in enumerate(self.bounding_boxes):
+            for j, box in enumerate(horizontal_boxes):
+                x, y, w, h = box
+                cv2.rectangle(segmented_image_with_boxes, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                cv2.putText(segmented_image_with_boxes, f"H{i+1}-V{j+1}", (x + 5, y + h//2), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+        return segmented_image_with_boxes
+    
+    def _process_image(self):
+        return TLCImageProcessor.crop_solvent_front_and_origin(PaperDetector.crop_to_paper(self.image))
+    
+    def _segment_image(self ):
+        return crop_substance_spot_ingredient(self.paper_image)
+    
+    def _convert_to_gray(self, image: np.ndarray, inverse: bool = False) -> np.ndarray:
+        if inverse:
+            return cv2.bitwise_not(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY))
+        return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)

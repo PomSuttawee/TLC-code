@@ -1,158 +1,68 @@
-import logging
 import numpy as np
-from package.image_processing.general import crop
-from package.image_processing.segmentation import threshold
-from package.image_processing.data_extractor import general, rf
+import cv2
 
-def validate_image(image: np.ndarray):
-    if not isinstance(image, np.ndarray):
-        raise ValueError(f"Image must be a numpy array")
-    if image.size == 0:
-        raise ValueError(f"Image cannot be empty")
-    if image.ndim < 2:
-        raise ValueError(f"Image must have at least 2 dimensions")
-    if image.ndim >= 3 and image.shape[2] not in (1, 3, 4):
-        raise ValueError(f"Unexpected number of channels in image: {image.shape[2]}")
+from package.image_processing.crop_paper import PaperDetector
+from package.image_processing.crop_solvent_front_and_origin import TLCImageProcessor
+from package.image_processing.crop_substance_spot import crop_substance_spot_mixture
+from package.data_extractor.mixture_data_extractor import extract_data
 
-class Substance:
-    def __init__(self, substance_index: int, peak_area: float, rf: float):
-        self.substance_index = substance_index
-        self.peak_area = peak_area
-        self.rf = rf
-
-class MixtureSingleColor:
-    """
-    Handles the segmentation and Rf value calculation for a single color channel.
-
-    Attributes:
-        single_color_image (np.ndarray): Image array of the color channel.
-        segmented_image (np.ndarray): Segmented image of the color channel.
-        rf (List[float]): Calculated Rf values for the color channel.
-    """
-    def __init__(self, name: str, single_color_image: np.ndarray):
-        """
-        Initializes the MixtureSingleColor with a given channel image.
-
-        Args:
-            single_color_image (np.ndarray): Image array of the color channel.
-        """
-        log = logging.getLogger('mixture-color')
-        log.info(f'Initializing color channel: {name}')
-        
-        # Validate inputs
-        validate_image(single_color_image)
-        
-        # Store basic attributes
+class Substance():
+    def __init__(self, name: str, rf: float, peak_area: float):
         self.name = name
-        self.single_color_image = single_color_image
+        self.rf = rf
+        self.peak_area = peak_area
+
+class MixtureSingleChannel():
+    def __init__(self, name: str, image: np.ndarray, bounding_boxes: list):
+        self.name = name
+        self.image = image
+        self.bounding_boxes = bounding_boxes
+        self.substances = self._create_substances()
+    
+    def _extract_data(self):
+        return extract_data(self.image, self.bounding_boxes)
+    
+    def _create_substances(self) -> dict:
+        substance_data = self._extract_data()
+        substances = {}
+        for name, data in substance_data.items():
+            substances[name] = Substance(name, data['rf'], data['peak_area'])    
+        return substances
+    
+class Mixture():
+    def __init__(self, name: str, image: np.ndarray):
+        self.name = name
+        self.image = image
+        self.paper_image = self._process_image()
+        self.segmented_image, self.bounding_boxes = self._segment_image()
         
-        try:
-            self._segment_image()
-            self._calculate_rf_and_peak_area()
-            self._process_substances()
-            
-        except Exception as e:
-            log.error(f'Failed to process color channel {name}: {str(e)}')
-            raise ValueError(f"Color channel processing failed: {str(e)}") from e
+        # import os
+        # path_paper = 'C:\\Users\\Suttawee\\Desktop\\TLC-code\\OUTPUT\\paper_image'
+        # path_segment = 'C:\\Users\\Suttawee\\Desktop\\TLC-code\\OUTPUT\\segment_image'
+        # cv2.imwrite(os.path.join(path_paper, f'{self.name[:-4]}_input.png'), self.paper_image)
+        # cv2.imwrite(os.path.join(path_segment, f'{self.name[:-4]}_mask_algo.png'), self.segmented_image)
+        
+        
+        self.single_channel_mixture = MixtureSingleChannel(name = self.name + "_gray",
+                                                           image = self._convert_to_gray(self.segmented_image),
+                                                           bounding_boxes = self.bounding_boxes)
+        
+    def get_images(self):
+        return [self.image, self.paper_image, self.segmented_image, self.get_label_image()]
+    
+    def get_label_image(self):
+        segmented_image_with_boxes = self.segmented_image.copy()
+        for i, box in enumerate(self.bounding_boxes):
+                x, y, w, h = box
+                cv2.rectangle(segmented_image_with_boxes, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                cv2.putText(segmented_image_with_boxes, f"H{i+1}", (0, y + h//3), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+        return segmented_image_with_boxes
+    
+    def _process_image(self):
+        return TLCImageProcessor.crop_solvent_front_and_origin(PaperDetector.crop_to_paper(self.image))
     
     def _segment_image(self):
-        """Segments the image using thresholding."""
-        self.segmented_image = threshold.segment_mixture(self.single_color_image)
-        
-    def _calculate_rf_and_peak_area(self):
-        """Calculates Rf values for the segmented image."""
-        self.rf = rf.calculate_rf_detect_peak(self.segmented_image)
-        self.peak_area = general.calculate_peak_area(self.segmented_image)
+        return crop_substance_spot_mixture(self.paper_image)
     
-    def _process_substances(self):
-        """Processes the substances in the image."""
-        self.substances = []
-        for i, rf_value in enumerate(self.rf):
-            self.substances.append(Substance(i, self.peak_area[i], rf_value))
-    
-    def get_image_with_centroids(self):
-        return rf.get_image_with_centroids(self.segmented_image)
-    
-    @property
-    def substance_count(self) -> int:
-        """Return the number of substances detected in this channel"""
-        return len(self.substances)
-        
-    @property 
-    def has_substances(self) -> bool:
-        """Return whether any substances were detected"""
-        return len(self.substances) > 0
-
-class Mixture:
-    """
-    Processes an image by segmenting it and calculating Rf values for different color channels.
-
-    Attributes:
-        name (str): Name of the mixture.
-        original_image (np.ndarray): Original image data.
-        detected_line_image (np.ndarray): Image with detected lines used for channel separation.
-        red_channel_mixture (MixtureSingleColor): MixtureSingleColor for the red channel.
-        green_channel_mixture (MixtureSingleColor): MixtureSingleColor for the green channel.
-        blue_channel_mixture (MixtureSingleColor): MixtureSingleColor for the blue channel.
-    """
-    def __init__(self, name: str, image: np.ndarray):
-        """
-        Initializes the Mixture by detecting lines and splitting the image by color channels.
-
-        Args:
-            name (str): Name of the mixture.
-            image (np.ndarray): Original image to be processed.
-        """
-        log = logging.getLogger('mixture')
-        log.info(f'Initiate Mixture[{name}]')
-        validate_image(image)
-        
-        self.name = name
-        self.original_image = image
-        
-        try:
-            self._preprocess_image()
-            self._process_color_channel()
-            
-        except Exception as e:
-            log.error(f'Failed to process ingredient {name}: {str(e)}')
-            raise ValueError(f"Mixture processing failed: {str(e)}") from e
-    
-    def print_all_substances(self):
-        """Prints all substances in the mixture."""
-        for color_channel in [self.red_channel_mixture, self.green_channel_mixture, self.blue_channel_mixture]:
-            print(f"Substances in {color_channel.name}:")
-            for substance in color_channel.substances:
-                print(f"Substance {substance.substance_index}: RF = {substance.rf}, Peak Area = {substance.peak_area}")
-    
-    def _preprocess_image(self):
-        """Detects lines in the image and crops it accordingly."""
-        self.line_detected_image = crop.detect_and_crop_houghlines(self.original_image)
-    
-    def _process_color_channel(self):
-        """Creates MixtureSingleColor objects for each RGB channel."""
-        log = logging.getLogger('mixture')
-        
-        # Process red channel
-        log.debug(f'Initiate MixtureSingleColor: Red channel')
-        self.red_channel_mixture = MixtureSingleColor(
-            f"{self.name}_red",
-            self.line_detected_image[:, :, 0]
-        )
-        
-        # Process green channel
-        log.debug(f'Initiate MixtureSingleColor: Green channel')
-        self.green_channel_mixture = MixtureSingleColor(
-            f"{self.name}_green",
-            self.line_detected_image[:, :, 1]
-        )
-        
-        # Process blue channel
-        log.debug(f'Initiate MixtureSingleColor: Blue channel')
-        self.blue_channel_mixture = MixtureSingleColor(
-            f"{self.name}_blue",
-            self.line_detected_image[:, :, 2]
-        )
-    
-    def __str__(self):
-        return f'Mixture[{self.name}]'
+    def _convert_to_gray(self, image: np.ndarray) -> np.ndarray:
+        return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)

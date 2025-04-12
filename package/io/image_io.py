@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-def load_image_path(input_type: str, substance_name: str = None) -> list:
+def load_image_path(input_type: str) -> list:
     """
     Load image file paths from the specified directory.
 
@@ -17,15 +17,15 @@ def load_image_path(input_type: str, substance_name: str = None) -> list:
     """
     if input_type == "mixtures":
         input_dir = os.path.join(os.getcwd(), 'input', 'mixtures')
-    elif input_type == "ingredients" and substance_name:
-        input_dir = os.path.join(os.getcwd(), 'input', 'ingredients', substance_name)
+    elif input_type == "ingredients":
+        input_dir = os.path.join(os.getcwd(), 'input', 'ingredients')
     else:
         raise ValueError("Invalid input_type or missing substance_name for ingredients")
     return [os.path.join(input_dir, image_name) for image_name in os.listdir(input_dir)]
 
 def read_image(image_path: str) -> np.ndarray:
     """
-    Read an image from the specified file path in RGB format.
+    Read an image from the specified file path in BGR format.
 
     Args:
         image_path (str): Path to the image file.
@@ -36,9 +36,9 @@ def read_image(image_path: str) -> np.ndarray:
     image = cv2.imread(image_path)
     if image is None:
         raise FileNotFoundError(f"Image not found at {image_path}")
-    return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    return image
 
-def show_images(image_list: List[np.ndarray], name_list: List[str] = None) -> None:
+def display_images(image_list: List[np.ndarray], name_list: List[str] = None) -> None:
     """
     Display a list of images in a grid layout.
 
@@ -46,10 +46,17 @@ def show_images(image_list: List[np.ndarray], name_list: List[str] = None) -> No
         image_list (list): List of images to display.
     """
     image_list = _flatten_image_list(image_list)
-    num_columns = min(len(image_list), 4)
-    num_rows = (len(image_list) + num_columns - 1) // num_columns
+    image_list_rgb = []
+    for image in image_list:
+        if image.shape[-1] == 3:
+            image_list_rgb.append(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        else:
+            image_list_rgb.append(image)
+   
+    num_columns = min(len(image_list_rgb), 4)
+    num_rows = (len(image_list_rgb) + num_columns - 1) // num_columns
     plt.figure(figsize=(20, 5 * num_rows))
-    for i, image in enumerate(image_list):
+    for i, image in enumerate(image_list_rgb):
         plt.subplot(num_rows, num_columns, i + 1)
         plt.imshow(image if len(image.shape) == 3 else image, cmap='gray')
         if name_list:
