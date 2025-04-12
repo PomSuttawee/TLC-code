@@ -1,7 +1,9 @@
 import logging
+import pandas as pd
 import sympy as sp
 from package.tlc_object.ingredient import Ingredient
 from package.tlc_object.mixture import Mixture
+import json
 
 
 # Set up logger
@@ -16,7 +18,27 @@ class TLCAnalyzer:
         self.aligned_ingredient_data = self._align_data()
         self.equations = self._create_equations()
         self.estimated_concentration = self._solve_equations()
+    
+    def get_result_csv(self):
+        ratios = {name: value for name, value in self.estimated_concentration.items() if name.endswith("_ratio")}
+        # 1st Column: Mixture Name
+        # n Columns: Ingredient Ratios
+        df = pd.DataFrame(columns = ['Mixture'] + list(ratios.keys()))
+        df.loc[0] = [self.mixture_object.name] + list(ratios.values())
+        df.to_csv(f"{self.mixture_object.name}.csv", index=False)
+
+    def get_result_json(self):
+        ratios = {name: float(value) for name, value in self.estimated_concentration.items() if name.endswith("_ratio")}
+        # 1st Column: Mixture Name
+        # n Columns: Ingredient Ratios
+        result = {
+            "Mixture": self.mixture_object.name,
+            "Ratios": ratios
+        }
         
+        result_json = json.dumps(result, indent=4)
+        return result_json
+    
     def print_result(self):
         # Print Equations
         # print("EQUATIONS".center(80))
