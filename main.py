@@ -77,30 +77,24 @@ def run_all_samples() -> None:
     
 
 def main() -> None:
-    # try:
-    #     test_ingredient()
-    #     test_mixture()
-    # except Exception as e:
-    #     logging.error(e)
-    #     raise e
-    
     ingredient_image_paths = image_io.load_image_path(input_type="ingredients")
     mixture_image_paths = image_io.load_image_path(input_type="mixtures")
     
     MIXTURE_INDEX = 0
     mixture = initailize_mixture(mixture_image_paths[MIXTURE_INDEX])
     
-    selected_path = [ingredient_image_paths[2]]
+    selected_path = [ingredient_image_paths[2], ingredient_image_paths[6], ingredient_image_paths[0]]
     ingredients = [initialize_ingredient(path) for path in selected_path]
     
-    # logging.info("TLC analysis started.")
-    # tlc_analyzer = TLCAnalyzer(mixture, ingredients)
+    logging.info("TLC analysis started.")
+    tlc_analyzer = TLCAnalyzer(mixture, ingredients)
+    tlc_analyzer.get_result_json()
     # tlc_analyzer.print_result()
-    # logging.info("TLC analysis completed.")
+    logging.info("TLC analysis completed.")
     
-    ingredient_image = [ingredients[i].get_images()[-1] for i in range(len(ingredients))]
-    mixture_image = [mixture.get_images()[-1]]
-    image_io.display_images(ingredient_image + mixture_image)
+    # ingredient_image = [ingredients[i].get_images() for i in range(len(ingredients))]
+    # mixture_image = [mixture.get_images()]
+    # image_io.display_images(ingredient_image + mixture_image)
 
 
 if __name__ == '__main__':
