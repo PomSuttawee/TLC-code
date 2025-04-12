@@ -3,7 +3,7 @@ import pandas as pd
 import cv2
 
 from package.image_processing.crop_paper import PaperDetector
-from package.image_processing.crop_solvent_front_and_origin import TLCImageProcessor
+from package.image_processing.crop_solvent_front_and_origin import TLCImageProcessor, TLCVisualizer
 from package.image_processing.crop_substance_spot import crop_substance_spot_ingredient
 from package.data_extractor.ingredient_data_extractor import extract_data
 
