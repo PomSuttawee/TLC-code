@@ -262,7 +262,7 @@ class TLCVisualizer:
     
     @staticmethod
     def _draw_lines(image: Image, lines: List[Line], color: Tuple[int, int, int] = (0, 255, 0), 
-                   thickness: int = 2) -> Image:
+                   thickness: int = 4) -> Image:
         """Draw lines on an image."""
         for line in lines:
             x1, y1, x2, y2 = line
@@ -280,15 +280,15 @@ class TLCVisualizer:
         image_list = TLCVisualizer.get_process_images(image)
         
         import matplotlib.pyplot as plt
-        fig, axs = plt.subplots(1, len(image_list), figsize=(20, 5))
-        
+        fig, axs = plt.subplots(2, len(image_list) // 2, figsize=(20, 10))
+        axs = axs.ravel()
         # Handle case when only one image is returned
         if len(image_list) == 1:
             axs.imshow(image_list[0])
             axs.axis('off')
         else:
             for i, img in enumerate(image_list):
-                axs[i].imshow(img)
+                axs[i].imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
                 axs[i].axis('off')
                 
         plt.tight_layout()
