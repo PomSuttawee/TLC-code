@@ -35,7 +35,7 @@ def crop_substance_spot_ingredient(image: np.ndarray) -> np.ndarray:
     assert segmented_image is not None, "Segmented image is None"
 
     
-    # visualize_segmented_image(image, image_remove_background, threshold_mask, bounding_boxes, highest_concentration_bounding_boxes, checked_overlapping_boxes, final_bounding_boxes, final_mask, segmented_image)
+    visualize_segmented_image(image, image_remove_background, threshold_mask, bounding_boxes, highest_concentration_bounding_boxes, checked_overlapping_boxes, final_bounding_boxes, final_mask, segmented_image)
     return segmented_image, final_bounding_boxes
 
 def crop_substance_spot_mixture(image: np.ndarray) -> np.ndarray:
@@ -80,28 +80,29 @@ def visualize_segmented_image(image: np.ndarray, image_remove_background: np.nda
     image_final_box = image.copy()
     for box in all_boxes:
         x, y, w, h = box
-        cv2.rectangle(image_all_box, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        cv2.rectangle(image_all_box, (x, y), (x+w, y+h), (0, 255, 0), 4)
     for box in highest_boxes:
         x, y, w, h = box
-        cv2.rectangle(image_highest_concentration_box, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        cv2.rectangle(image_highest_concentration_box, (x, y), (x+w, y+h), (0, 255, 0), 4)
     for box in checked_boxes:
         x, y, w, h = box
-        cv2.rectangle(image_checked_box, (x, y), (x+w, y+h), (0, 255, 0), 2)
-    for box in final_boxes:
-        x, y, w, h = box
-        cv2.rectangle(image_final_box, (x, y), (x+w, y+h), (0, 255, 0), 2)
+        cv2.rectangle(image_checked_box, (x, y), (x+w, y+h), (0, 255, 0), 4)
+    for horizontal_box in final_boxes:
+        for box in horizontal_box:
+            x, y, w, h = box
+            cv2.rectangle(image_final_box, (x, y), (x+w, y+h), (0, 255, 0), 4)
     
     fig, ax = plt.subplots(3, 3, figsize=(18, 18))
     ax = ax.ravel()
-    ax[0].imshow(image),                           ax[0].set_title("Original Image")
-    ax[1].imshow(image_remove_background),         ax[1].set_title("Background Removed")
+    ax[0].imshow(cv2.cvtColor(image, cv2.COLOR_BGR2RGB)),                           ax[0].set_title("Original Image")
+    ax[1].imshow(cv2.cvtColor(image_remove_background, cv2.COLOR_BGR2RGB), cmap='gray'),         ax[1].set_title("Background Removed")
     ax[2].imshow(threshold_mask, cmap='gray'),     ax[2].set_title("Threshold Mask")
-    ax[3].imshow(image_all_box),                   ax[3].set_title("All Bounding Boxes")
-    ax[4].imshow(image_highest_concentration_box), ax[4].set_title("Highest Concentration Bounding Boxes")
-    ax[5].imshow(image_checked_box),               ax[5].set_title("Checked Overlapping Boxes")
-    ax[6].imshow(image_final_box),                 ax[6].set_title("Final Bounding Boxes")
+    ax[3].imshow(cv2.cvtColor(image_all_box, cv2.COLOR_BGR2RGB)),                   ax[3].set_title("All Bounding Boxes")
+    ax[4].imshow(cv2.cvtColor(image_highest_concentration_box, cv2.COLOR_BGR2RGB)), ax[4].set_title("Highest Concentration Bounding Boxes")
+    ax[5].imshow(cv2.cvtColor(image_checked_box, cv2.COLOR_BGR2RGB)),               ax[5].set_title("Checked Overlapping Boxes")
+    ax[6].imshow(cv2.cvtColor(image_final_box, cv2.COLOR_BGR2RGB)),                 ax[6].set_title("Final Bounding Boxes")
     ax[7].imshow(final_mask, cmap='gray'),         ax[7].set_title("Final Mask")
-    ax[8].imshow(segmented_image),                 ax[8].set_title("Segmented Image")
+    ax[8].imshow(cv2.cvtColor(segmented_image, cv2.COLOR_BGR2RGB)),                 ax[8].set_title("Segmented Image")
     for a in ax:
         a.axis("off")
     plt.show()
